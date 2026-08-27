@@ -1,0 +1,9 @@
+{
+  "extends": "zotero-types/entries/sandbox",
+  "compilerOptions": {
+    "noImplicitOverride": true,
+    "tsBuildInfoFile": "build/.tsbuildinfo"
+  },
+  "include": ["src", "typings", "node_modules/zotero-types"],
+  "exclude": ["build", "addon"]
+}

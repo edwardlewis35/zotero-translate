@@ -1,0 +1,181 @@
+.lft-pref-page {
+  box-sizing: border-box;
+  max-width: 900px;
+  padding: 20px 24px 40px;
+  color: var(--fill-primary, #202124);
+  font: menu;
+}
+
+.lft-pref-page * {
+  box-sizing: border-box;
+}
+
+.lft-pref-hero {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.lft-pref-logo {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  place-items: center;
+  border-radius: 14px;
+  color: white;
+  background: linear-gradient(135deg, #4f7cff, #7557d7);
+  box-shadow: 0 8px 22px rgb(79 124 255 / 25%);
+  font-size: 25px;
+  font-weight: 750;
+}
+
+.lft-pref-hero h1,
+.lft-pref-card h2 {
+  margin: 0;
+  line-height: 1.25;
+}
+
+.lft-pref-hero h1 {
+  font-size: 22px;
+}
+
+.lft-pref-hero p,
+.lft-section-title p {
+  margin: 4px 0 0;
+  color: var(--fill-secondary, #676b73);
+}
+
+.lft-pref-card {
+  margin: 12px 0;
+  padding: 17px 18px;
+  border: 1px solid var(--material-border, #d9dce3);
+  border-radius: 12px;
+  background: var(--material-background, #fff);
+}
+
+.lft-pref-card h2 {
+  margin-bottom: 12px;
+  font-size: 16px;
+}
+
+.lft-section-title {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 10px;
+}
+
+.lft-section-title h2 {
+  margin-bottom: 0;
+}
+
+.lft-inline-actions,
+.lft-test-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.lft-inline-actions {
+  justify-content: flex-end;
+}
+
+.lft-managed-directory-row {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  color: var(--fill-secondary, #656971);
+  background: rgb(127 127 127 / 8%);
+  font-size: 11px;
+}
+
+.lft-managed-directory-row code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lft-pref-page input,
+.lft-pref-page textarea {
+  width: 100%;
+  padding: 7px 9px;
+  border: 1px solid var(--material-border, #cfd3dc);
+  border-radius: 7px;
+  color: inherit;
+  background: var(--material-background, #fff);
+  font: inherit;
+}
+
+.lft-pref-page textarea {
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.lft-paths {
+  min-height: 116px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace !important;
+  font-size: 12px !important;
+}
+
+.lft-form-grid {
+  display: grid;
+  grid-template-columns: 118px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px 14px;
+}
+
+.lft-form-grid > label {
+  color: var(--fill-secondary, #5e626a);
+}
+
+.lft-form-grid > label[for="lft-openai-prompt"] {
+  align-self: start;
+  padding-top: 7px;
+}
+
+.lft-prompt {
+  min-height: 150px;
+}
+
+.lft-pref-hint {
+  margin: 8px 0 0;
+  color: var(--fill-secondary, #6c7078);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.lft-pref-hint code {
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: rgb(127 127 127 / 12%);
+}
+
+.lft-test-row {
+  margin-top: 14px;
+}
+
+#lft-settings-status {
+  color: var(--fill-secondary, #656971);
+  font-size: 12px;
+}
+
+#lft-settings-status[data-kind="ok"] {
+  color: #168343;
+}
+
+#lft-settings-status[data-kind="error"] {
+  color: #c83b3b;
+}
+
+@media (prefers-color-scheme: dark) {
+  .lft-pref-card {
+    box-shadow: 0 1px 0 rgb(255 255 255 / 3%);
+  }
+}

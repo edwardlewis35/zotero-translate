@@ -1,0 +1,43 @@
+{
+  "name": "zotero9-dict-translator",
+  "version": "0.2.2",
+  "type": "module",
+  "private": true,
+  "description": "A Zotero 9 PDF translation plugin with multiple local MDX/MDD dictionaries and an OpenAI-compatible fallback.",
+  "config": {
+    "addonName": "LexiFlow 词典翻译",
+    "addonID": "lexiflow-dict-translator@example.com",
+    "addonRef": "lexiflowdicttranslator",
+    "prefsPrefix": "extensions.zotero.lexiflowDictTranslator",
+    "addonInstance": "LexiFlowDictTranslator"
+  },
+  "main": "src/index.ts",
+  "scripts": {
+    "start": "zotero-plugin serve",
+    "build": "tsc --noEmit && zotero-plugin build",
+    "lint": "prettier --check .",
+    "format": "prettier --write ."
+  },
+  "engines": {
+    "node": ">=22.8.0"
+  },
+  "author": "LexiFlow contributors",
+  "license": "AGPL-3.0-or-later",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/example/zotero9-dict-translator.git"
+  },
+  "dependencies": {
+    "buffer": "^6.0.3",
+    "js-mdict": "^7.0.0",
+    "pako": "^2.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.16.5",
+    "@types/pako": "^2.0.4",
+    "prettier": "^3.7.4",
+    "typescript": "^5.9.3",
+    "zotero-plugin-scaffold": "^0.8.2",
+    "zotero-types": "^4.1.0-beta.3"
+  }
+}

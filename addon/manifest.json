@@ -1,0 +1,15 @@
+{
+  "manifest_version": 2,
+  "name": "__addonName__",
+  "version": "__buildVersion__",
+  "description": "__description__",
+  "author": "__author__",
+  "applications": {
+    "zotero": {
+      "id": "__addonID__",
+      "update_url": "https://example.com/lexiflow-dict-translator/updates.json",
+      "strict_min_version": "9.0",
+      "strict_max_version": "9.0.*"
+    }
+  }
+}
