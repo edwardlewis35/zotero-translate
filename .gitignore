@@ -1,0 +1,8 @@
+node_modules/
+build/
+.scaffold/
+.env
+*.tsbuildinfo
+*.xpi
+*.zip
+.DS_Store
