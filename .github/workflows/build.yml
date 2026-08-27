@@ -1,0 +1,82 @@
+name: Build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Check and build XPI
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check formatting
+        run: npm run lint
+
+      - name: Build plugin
+        run: npm run build
+
+      - name: Verify package contents
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f build/lexiflow-zotero9-translator.xpi
+          test -f build/update.json
+          unzip -t build/lexiflow-zotero9-translator.xpi
+          unzip -p build/lexiflow-zotero9-translator.xpi manifest.json \
+            | node -e '
+                let input = "";
+                process.stdin.on("data", (chunk) => (input += chunk));
+                process.stdin.on("end", () => {
+                  const manifest = JSON.parse(input);
+                  const zotero = manifest.applications?.zotero;
+                  if (!zotero?.update_url) {
+                    throw new Error("applications.zotero.update_url is missing");
+                  }
+                  const expectedUpdateURL = `https://github.com/${process.env.GITHUB_REPOSITORY}/releases/latest/download/update.json`;
+                  if (zotero.update_url !== expectedUpdateURL) {
+                    throw new Error(
+                      `unexpected update URL ${zotero.update_url}; expected ${expectedUpdateURL}`,
+                    );
+                  }
+                  const packageVersion = JSON.parse(
+                    require("fs").readFileSync("package.json", "utf8"),
+                  ).version;
+                  if (manifest.version !== packageVersion) {
+                    throw new Error(
+                      `manifest version ${manifest.version} does not match package version ${packageVersion}`,
+                    );
+                  }
+                });
+              '
+
+      - name: Upload XPI artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: lexiflow-zotero9-translator-${{ github.sha }}
+          path: |
+            build/lexiflow-zotero9-translator.xpi
+            build/update.json
+          if-no-files-found: error
+          retention-days: 14

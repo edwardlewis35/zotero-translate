@@ -1,0 +1,160 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build and publish release
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Validate release tag
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          package_version="$(node -e "process.stdout.write(JSON.parse(require('fs').readFileSync('package.json', 'utf8')).version)")"
+          expected_tag="v${package_version}"
+
+          if [[ "${GITHUB_REF_NAME}" != "${expected_tag}" ]]; then
+            echo "Tag ${GITHUB_REF_NAME} does not match package.json version ${package_version}." >&2
+            exit 1
+          fi
+
+          echo "version=${package_version}" >> "${GITHUB_OUTPUT}"
+          if [[ "${package_version}" == *-* ]]; then
+            echo "prerelease=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "prerelease=false" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check formatting
+        run: npm run lint
+
+      - name: Build release XPI
+        run: npm run build
+
+      - name: Prepare release assets
+        id: assets
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          xpi="build/lexiflow-zotero9-translator.xpi"
+          update_json="build/update.json"
+          source_zip="build/lexiflow-zotero9-translator-${VERSION}-source.zip"
+          checksums="build/SHA256SUMS.txt"
+
+          test -f "${xpi}"
+          test -f "${update_json}"
+          unzip -t "${xpi}"
+          unzip -p "${xpi}" manifest.json \
+            | node -e '
+                let input = "";
+                process.stdin.on("data", (chunk) => (input += chunk));
+                process.stdin.on("end", () => {
+                  const manifest = JSON.parse(input);
+                  const expectedUpdateURL = `https://github.com/${process.env.GITHUB_REPOSITORY}/releases/latest/download/update.json`;
+                  const actualUpdateURL = manifest.applications?.zotero?.update_url;
+                  if (manifest.version !== process.env.VERSION) {
+                    throw new Error(
+                      `manifest version ${manifest.version} does not match ${process.env.VERSION}`,
+                    );
+                  }
+                  if (actualUpdateURL !== expectedUpdateURL) {
+                    throw new Error(
+                      `unexpected update URL ${actualUpdateURL}; expected ${expectedUpdateURL}`,
+                    );
+                  }
+                });
+              '
+          node -e '
+            const update = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+            const addon = update.addons?.["lexiflow-dict-translator@example.com"];
+            const candidate = addon?.updates?.find(
+              (item) => item.version === process.env.VERSION,
+            );
+            const expectedLink = `https://github.com/${process.env.GITHUB_REPOSITORY}/releases/download/v${process.env.VERSION}/lexiflow-zotero9-translator.xpi`;
+            if (candidate?.update_link !== expectedLink) {
+              throw new Error(
+                `unexpected XPI update link ${candidate?.update_link}; expected ${expectedLink}`,
+              );
+            }
+          ' "${update_json}"
+          git archive \
+            --format=zip \
+            --prefix="lexiflow-zotero9-translator-${VERSION}/" \
+            --output="${source_zip}" \
+            "${GITHUB_SHA}"
+
+          (
+            cd build
+            sha256sum \
+              "$(basename "${xpi}")" \
+              "$(basename "${source_zip}")" \
+              "$(basename "${update_json}")" \
+              > "$(basename "${checksums}")"
+          )
+
+          echo "xpi=${xpi}" >> "${GITHUB_OUTPUT}"
+          echo "update_json=${update_json}" >> "${GITHUB_OUTPUT}"
+          echo "source_zip=${source_zip}" >> "${GITHUB_OUTPUT}"
+          echo "checksums=${checksums}" >> "${GITHUB_OUTPUT}"
+
+      - name: Create or update GitHub Release
+        shell: bash
+        env:
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ steps.version.outputs.version }}
+          PRERELEASE: ${{ steps.version.outputs.prerelease }}
+          XPI: ${{ steps.assets.outputs.xpi }}
+          UPDATE_JSON: ${{ steps.assets.outputs.update_json }}
+          SOURCE_ZIP: ${{ steps.assets.outputs.source_zip }}
+          CHECKSUMS: ${{ steps.assets.outputs.checksums }}
+        run: |
+          set -euo pipefail
+          assets=("${XPI}" "${UPDATE_JSON}" "${SOURCE_ZIP}" "${CHECKSUMS}")
+
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            gh release upload "${TAG}" "${assets[@]}" --clobber
+          else
+            options=(
+              "${TAG}"
+              "${assets[@]}"
+              --title "LexiFlow ${VERSION}"
+              --generate-notes
+              --verify-tag
+            )
+            if [[ "${PRERELEASE}" == "true" ]]; then
+              options+=(--prerelease)
+            fi
+            gh release create "${options[@]}"
+          fi
