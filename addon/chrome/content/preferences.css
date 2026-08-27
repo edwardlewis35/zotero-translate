@@ -1,7 +1,7 @@
 .lft-pref-page {
   box-sizing: border-box;
-  max-width: 900px;
-  padding: 20px 24px 40px;
+  max-width: 980px;
+  padding: 20px 24px 42px;
   color: var(--fill-primary, #202124);
   font: menu;
 }
@@ -21,6 +21,7 @@
   display: grid;
   width: 48px;
   height: 48px;
+  flex: 0 0 auto;
   place-items: center;
   border-radius: 14px;
   color: white;
@@ -61,10 +62,10 @@
 
 .lft-section-title {
   display: flex;
-  align-items: start;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
 
 .lft-section-title h2 {
@@ -72,7 +73,8 @@
 }
 
 .lft-inline-actions,
-.lft-test-row {
+.lft-config-controls,
+.lft-api-profile-title {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -83,12 +85,54 @@
   justify-content: flex-end;
 }
 
+.lft-pref-page button {
+  min-height: 32px;
+  padding: 5px 11px;
+  border: 1px solid var(--material-border, #cfd3dc);
+  border-radius: 7px;
+  color: var(--fill-primary, #202124);
+  background: var(--material-background, #fff);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.lft-pref-page button:hover:not(:disabled) {
+  border-color: #6a7de5;
+  color: #5368d9;
+  background: rgb(90 112 232 / 8%);
+}
+
+.lft-pref-page button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.lft-pref-page .lft-primary-button {
+  border-color: #5a70e8;
+  color: white;
+  background: #5a70e8;
+}
+
+.lft-pref-page .lft-primary-button:hover:not(:disabled) {
+  border-color: #4b61da;
+  color: white;
+  background: #4b61da;
+}
+
+.lft-icon-button {
+  min-height: 28px !important;
+  padding: 3px 8px !important;
+  color: var(--fill-secondary, #6d7179) !important;
+  font-size: 11px !important;
+}
+
 .lft-managed-directory-row {
   display: grid;
   grid-template-columns: max-content minmax(0, 1fr);
   align-items: center;
   gap: 10px;
-  margin: 0 0 10px;
+  margin: 0 0 12px;
   padding: 8px 10px;
   border-radius: 8px;
   color: var(--fill-secondary, #656971);
@@ -96,10 +140,65 @@
   font-size: 11px;
 }
 
-.lft-managed-directory-row code {
+.lft-managed-directory-row code,
+.lft-config-path {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.lft-config-list {
+  display: grid;
+  gap: 10px;
+}
+
+.lft-dictionary-config,
+.lft-api-profile {
+  overflow: hidden;
+  border: 1px solid var(--material-border, #d9dce3);
+  border-radius: 10px;
+  background: var(--material-background, #fff);
+}
+
+.lft-dictionary-config.is-disabled {
+  opacity: 0.66;
+}
+
+.lft-api-profile.is-selected {
+  border-color: #7184eb;
+  box-shadow: 0 0 0 2px rgb(90 112 232 / 10%);
+}
+
+.lft-config-header,
+.lft-api-profile-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  background: rgb(127 127 127 / 5%);
+}
+
+.lft-config-identity {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.lft-config-badge {
+  padding: 2px 6px;
+  border-radius: 5px;
+  color: #4d63d7;
+  background: rgb(90 112 232 / 11%);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.lft-config-badge.is-model {
+  color: #8a4bb8;
+  background: rgb(138 75 184 / 11%);
 }
 
 .lft-pref-page input,
@@ -118,34 +217,139 @@
   line-height: 1.5;
 }
 
-.lft-paths {
-  min-height: 116px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace !important;
-  font-size: 12px !important;
+.lft-config-name {
+  min-width: 150px;
+  max-width: 360px;
+  border-color: transparent !important;
+  background: transparent !important;
+  font-weight: 650 !important;
 }
 
-.lft-form-grid {
-  display: grid;
-  grid-template-columns: 118px minmax(0, 1fr);
+.lft-config-name:focus {
+  border-color: #7184eb !important;
+  background: var(--material-background, #fff) !important;
+}
+
+.lft-enable-control,
+.lft-profile-default {
+  display: inline-flex;
   align-items: center;
-  gap: 10px 14px;
+  gap: 5px;
+  color: var(--fill-secondary, #5f646d);
+  font-size: 11px;
+  white-space: nowrap;
 }
 
-.lft-form-grid > label {
-  color: var(--fill-secondary, #5e626a);
+.lft-enable-control input,
+.lft-profile-default input {
+  width: auto;
+  margin: 0;
 }
 
-.lft-form-grid > label[for="lft-openai-prompt"] {
-  align-self: start;
-  padding-top: 7px;
+.lft-config-path-row {
+  display: grid;
+  grid-template-columns: 66px minmax(0, 1fr);
+  gap: 8px;
+  padding: 9px 12px 4px;
+  color: var(--fill-secondary, #686c74);
+  font-size: 11px;
 }
 
-.lft-prompt {
-  min-height: 150px;
+.lft-config-path-label {
+  color: var(--fill-tertiary, #92969e);
+}
+
+.lft-config-resources {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 5px 12px 11px 86px;
+}
+
+.lft-resource-summary {
+  color: var(--fill-tertiary, #8a8f98);
+  font-size: 11px;
+}
+
+.lft-resource-chip {
+  max-width: 190px;
+  overflow: hidden;
+  padding: 2px 6px;
+  border-radius: 999px;
+  color: var(--fill-secondary, #626771);
+  background: rgb(127 127 127 / 9%);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lft-config-empty {
+  display: grid;
+  min-height: 116px;
+  padding: 18px;
+  place-items: center;
+  align-content: center;
+  gap: 5px;
+  border: 1px dashed var(--material-border, #cfd3dc);
+  border-radius: 10px;
+  color: var(--fill-secondary, #6b7079);
+  text-align: center;
+}
+
+.lft-config-empty-icon {
+  color: #5a70e8;
+  font-size: 22px;
+}
+
+.lft-api-profile-header {
+  align-items: flex-start;
+}
+
+.lft-api-profile-title {
+  min-width: 0;
+  padding-top: 4px;
+}
+
+.lft-profile-model-summary {
+  overflow: hidden;
+  max-width: 230px;
+  color: var(--fill-tertiary, #898e97);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lft-profile-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 12px;
+  padding: 12px;
+}
+
+.lft-profile-field {
+  display: grid;
+  gap: 5px;
+}
+
+.lft-profile-field.is-wide {
+  grid-column: 1 / -1;
+}
+
+.lft-profile-label {
+  color: var(--fill-secondary, #5f646d);
+  font-size: 11px;
+}
+
+.lft-profile-prompt {
+  min-height: 124px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace !important;
+  font-size: 11px !important;
 }
 
 .lft-pref-hint {
-  margin: 8px 0 0;
+  margin: 9px 0 0;
   color: var(--fill-secondary, #6c7078);
   font-size: 12px;
   line-height: 1.55;
@@ -157,8 +361,14 @@
   background: rgb(127 127 127 / 12%);
 }
 
-.lft-test-row {
-  margin-top: 14px;
+.lft-global-status-row {
+  position: sticky;
+  bottom: 0;
+  min-height: 34px;
+  padding: 8px 12px;
+  border: 1px solid var(--material-border, #d9dce3);
+  border-radius: 8px;
+  background: var(--material-background, #fff);
 }
 
 #lft-settings-status {
@@ -174,8 +384,22 @@
   color: #c83b3b;
 }
 
-@media (prefers-color-scheme: dark) {
-  .lft-pref-card {
-    box-shadow: 0 1px 0 rgb(255 255 255 / 3%);
+@media (max-width: 720px) {
+  .lft-section-title,
+  .lft-config-header,
+  .lft-api-profile-header {
+    flex-direction: column;
+  }
+
+  .lft-inline-actions {
+    justify-content: flex-start;
+  }
+
+  .lft-profile-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .lft-profile-field.is-wide {
+    grid-column: auto;
   }
 }

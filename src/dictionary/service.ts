@@ -1,9 +1,8 @@
 import { MDD, MDX } from "js-mdict";
-import { getPref } from "../prefs";
+import { loadDictionaryConfigs, type DictionaryConfig } from "../prefs";
 import {
   discoverSiblingMDDPaths,
   groupDictionaryPaths,
-  parseDictionaryPaths,
   type DictionaryFileGroup,
 } from "./paths";
 import { extractAudioReferences, parseDefinition } from "./parser";
@@ -170,33 +169,49 @@ export class LocalDictionaryService {
     this.cacheKey = null;
   }
 
-  private async load(rawPaths: string): Promise<DictionaryLoadResult> {
+  private async load(
+    configs: DictionaryConfig[],
+  ): Promise<DictionaryLoadResult> {
     const errors: string[] = [];
-    const configured = parseDictionaryPaths(rawPaths);
-    if (!configured.some((path) => /\.mdx$/iu.test(path))) {
+    const enabled = configs.filter((config) => config.enabled);
+    if (enabled.length === 0) {
       return {
         dictionaries: [],
-        errors: ["尚未配置任何 MDX 词典"],
+        errors: ["尚未配置或启用任何 MDX 词典"],
       };
     }
 
-    const existing: string[] = [];
-    for (const path of configured) {
-      if (await IOUtils.exists(path)) {
-        existing.push(path);
-      } else {
-        errors.push(`文件不存在：${path}`);
-      }
-    }
-    const groups = groupDictionaryPaths(
-      await discoverSiblingMDDPaths(existing),
-    );
     const dictionaries: LoadedDictionary[] = [];
-    for (const group of groups) {
+    for (const config of enabled) {
+      if (!(await IOUtils.exists(config.mdxPath))) {
+        errors.push(`${config.name} 文件不存在：${config.mdxPath}`);
+        continue;
+      }
+
+      const existing = [config.mdxPath];
+      for (const path of config.mddPaths) {
+        if (await IOUtils.exists(path)) {
+          existing.push(path);
+        } else {
+          errors.push(`${config.name} 资源文件不存在：${path}`);
+        }
+      }
+      const expanded = await discoverSiblingMDDPaths(existing);
+      const group = groupDictionaryPaths(expanded).find(
+        (candidate) =>
+          candidate.mdxPath.toLocaleLowerCase() ===
+          config.mdxPath.toLocaleLowerCase(),
+      );
+      if (!group) {
+        errors.push(`${config.name} 无法识别 MDX 配置`);
+        continue;
+      }
+
       try {
         await Zotero.Promise.delay(0);
         dictionaries.push({
           ...group,
+          name: config.name || group.name,
           mdx: new MDX(group.mdxPath, {
             passcode: "",
             isStripKey: true,
@@ -215,11 +230,12 @@ export class LocalDictionaryService {
   }
 
   private getDictionaries(): Promise<DictionaryLoadResult> {
-    const rawPaths = String(getPref("dictionaryPaths") || "");
-    if (this.cacheKey !== rawPaths || !this.cache) {
+    const configs = loadDictionaryConfigs();
+    const cacheKey = JSON.stringify(configs);
+    if (this.cacheKey !== cacheKey || !this.cache) {
       this.reset();
-      this.cacheKey = rawPaths;
-      this.cache = this.load(rawPaths).catch((error) => {
+      this.cacheKey = cacheKey;
+      this.cache = this.load(configs).catch((error) => {
         this.cache = null;
         throw error;
       });

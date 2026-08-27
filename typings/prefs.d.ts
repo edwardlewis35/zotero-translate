@@ -10,6 +10,9 @@ declare namespace _ZoteroTypes {
       "autoTranslateWord": boolean;
       "autoTranslateParagraph": boolean;
       "dictionaryPaths": string;
+      "dictionaryConfigs": string;
+      "apiProfiles": string;
+      "selectedApiProfileId": string;
       "openaiEndpoint": string;
       "openaiApiKey": string;
       "openaiModel": string;

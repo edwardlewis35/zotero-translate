@@ -44,15 +44,19 @@ function stripPronunciationLabel(value: string): string {
     .trim();
 }
 
-function looksLikePronunciation(value: string): boolean {
-  if (!value || value.length > 90) return false;
-  return (
-    /[/\[].+[/\]]/u.test(value) ||
-    /[əɜɪʊʌɑɒæɛɔθðŋʃʒˈˌ]/u.test(value) ||
-    /^(?:英式?|英音|美式?|美音|british|american|uk|us)(?:\b|\s*[：:])/iu.test(
-      value,
-    )
-  );
+export function extractPronunciationText(value: string): string {
+  const cleaned = stripPronunciationLabel(value);
+  if (!cleaned || cleaned.length > 90) return "";
+
+  const delimited = cleaned.match(/\/[^/\n]{1,80}\/|\[[^\]\n]{1,80}\]/u)?.[0];
+  if (delimited) return delimited;
+
+  // Plain words such as "test" are labels or headwords, not phonetics. Only
+  // accept undelimited values when they contain actual IPA symbols.
+  if (/[əɜɞɚɝɐɘɪʊʌɑɒæɛɔɨɵɤɯɶɻɹɾθðŋɲʃʒçʧʤˈˌː]/u.test(cleaned)) {
+    return cleaned;
+  }
+  return "";
 }
 
 function extractPronunciations(doc: Document): Pronunciation[] {
@@ -72,21 +76,28 @@ function extractPronunciations(doc: Document): Pronunciation[] {
   ].join(",");
 
   for (const element of queryAll<HTMLElement>(doc, selector)) {
-    const raw = cleanText(element.textContent);
-    if (!looksLikePronunciation(raw)) continue;
-    const text = stripPronunciationLabel(raw);
-    if (!text || text.length > 70) continue;
-    const clue = [
-      raw,
-      element.className,
+    const values = [
+      cleanText(element.textContent),
+      element.getAttribute("data-phonetic") || "",
+      element.getAttribute("data-pronunciation") || "",
+      element.getAttribute("data-ipa") || "",
       element.getAttribute("title") || "",
+    ];
+    const clue = [
+      ...values,
+      element.className,
       element.parentElement?.className || "",
     ].join(" ");
-    const region = regionFromClue(clue);
-    const key = `${region}\u0000${text}`.toLocaleLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    output.push({ region, text });
+    for (const raw of values) {
+      const text = extractPronunciationText(raw);
+      if (!text) continue;
+      const region = regionFromClue(`${clue} ${raw}`);
+      const key = `${region}\u0000${text}`.toLocaleLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      output.push({ region, text });
+      if (output.length >= 4) break;
+    }
     if (output.length >= 4) break;
   }
   return output;
@@ -297,7 +308,7 @@ export function extractAudioReferences(definition: string): AudioReference[] {
 
 export function parseDefinition(
   definition: string,
-  headword: string,
+  _headword: string,
 ): ParsedDefinition {
   const doc = new DOMParser().parseFromString(definition, "text/html");
   doc
@@ -306,11 +317,6 @@ export function parseDefinition(
   const plain = definitionToPlainText(definition);
   const audioReferences = extractAudioReferences(definition);
   const pronunciations = extractPronunciations(doc);
-  if (pronunciations.length === 0 && audioReferences.length > 0) {
-    for (const audio of audioReferences.slice(0, 2)) {
-      pronunciations.push({ region: audio.region, text: headword });
-    }
-  }
   const structured = extractStructuredSenses(doc);
   const fallback = fallbackSenses(definition);
   const structuredIsFlattened =

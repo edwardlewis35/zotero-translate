@@ -5,8 +5,14 @@ import type {
   DictionaryEntry,
   LocalLookupResult,
 } from "../dictionary/types";
-import { translateWithOpenAI } from "../openai";
-import { getPref } from "../prefs";
+import { translateWithOpenAI, type TranslationProgress } from "../openai";
+import {
+  getPref,
+  getSelectedAPIProfile,
+  loadAPIProfiles,
+  selectAPIProfile,
+  type APIProfile,
+} from "../prefs";
 
 const STYLE_ID = "lexiflowdicttranslator-reader-style";
 
@@ -50,6 +56,8 @@ export class TranslationCard {
   readonly root: HTMLDivElement;
   private requestID = 0;
   private queryText: string;
+  private selectedProfileID = getPref("selectedApiProfileId");
+  private cancelActiveRequest: (() => void) | null = null;
 
   constructor(
     private readonly doc: Document,
@@ -134,6 +142,7 @@ export class TranslationCard {
     subtitle: string,
     body: HTMLElement,
     actions: HTMLElement[] = [],
+    modelPickerDisabled = false,
   ): void {
     const header = this.element("div", "lft-card-header");
     const titleWrap = this.element("div", "lft-card-title-wrap");
@@ -149,14 +158,46 @@ export class TranslationCard {
     );
     titleWrap.append(heading);
     header.append(titleWrap);
-    if (actions.length > 0) {
-      const actionWrap = this.element("div", "lft-card-actions");
-      actionWrap.append(...actions);
-      header.append(actionWrap);
-    }
+    const actionWrap = this.element("div", "lft-card-actions");
+    actionWrap.append(this.modelPicker(modelPickerDisabled), ...actions);
+    header.append(actionWrap);
     const bodyWrap = this.element("div", "lft-card-body");
     bodyWrap.append(body);
     this.root.replaceChildren(header, bodyWrap);
+  }
+
+  private modelPicker(disabled = false): HTMLLabelElement {
+    const profiles = loadAPIProfiles();
+    let selected = profiles.find(
+      (profile) => profile.id === this.selectedProfileID,
+    );
+    if (!selected) {
+      selected = profiles[0];
+      if (selected) this.selectedProfileID = selected.id;
+    }
+
+    const label = this.element("label", "lft-model-picker");
+    label.title = "选择本次大模型翻译使用的 API 和模型";
+    label.append(this.element("span", "lft-model-picker-label", "模型"));
+    const select = this.element("select", "lft-model-select");
+    select.disabled = disabled;
+    for (const profile of profiles) {
+      const option = this.element("option");
+      option.value = profile.id;
+      option.textContent = `${profile.name} · ${profile.model || "未配置"}`;
+      option.selected = profile.id === selected?.id;
+      select.append(option);
+    }
+    select.addEventListener("pointerdown", (event) => {
+      event.stopPropagation();
+    });
+    select.addEventListener("change", (event) => {
+      event.stopPropagation();
+      this.selectedProfileID = select.value;
+      selectAPIProfile(select.value);
+    });
+    label.append(select);
+    return label;
   }
 
   private renderIdle(
@@ -250,7 +291,7 @@ export class TranslationCard {
         const item = this.element("li", "lft-pronunciation");
         item.append(
           this.element("span", "lft-pron-region", audio.region),
-          this.element("span", "lft-pron-text", audio.label),
+          this.element("span", "lft-pron-audio-label", "发音"),
           this.audioButton(audio),
         );
         list.append(item);
@@ -374,9 +415,10 @@ export class TranslationCard {
             button.title = `写入批注失败：${errorMessage(error)}`;
           });
       },
-      true,
+      false,
       "对当前选中文本创建高亮，并把本次翻译写入批注内容",
     );
+    button.classList.add("lft-button-annotation");
     return button;
   }
 
@@ -462,9 +504,20 @@ export class TranslationCard {
     this.frame("本地词典 · 未命中", state);
   }
 
-  private renderOnlineResult(text: string, model: string): void {
+  private renderOnlineResult(
+    text: string,
+    model: string,
+    profileName: string,
+    status = "完成",
+  ): void {
     const content = this.element("div", "lft-llm-result");
-    content.append(this.element("div", "lft-llm-label", "✦ 大模型译文"));
+    content.append(
+      this.element(
+        "div",
+        "lft-llm-label",
+        status === "完成" ? "✦ 大模型译文" : `✦ 大模型译文 · ${status}`,
+      ),
+    );
     const lines = this.element("div", "lft-translation-lines");
     for (const line of translationLines(text)) {
       lines.append(this.element("p", "lft-translation-line", line));
@@ -472,7 +525,7 @@ export class TranslationCard {
     content.append(lines);
     const footer = this.element("div", "lft-footer");
     footer.append(
-      this.element("span", "", `OpenAI-compatible · ${model}`),
+      this.element("span", "", `${profileName} · ${model}`),
       this.element("span", "", `${text.length} 字符`),
     );
     content.append(footer);
@@ -487,6 +540,78 @@ export class TranslationCard {
         ? [this.button("本地词典", () => void this.lookupLocal())]
         : []),
     ]);
+  }
+
+  private renderOnlineStreaming(
+    profile: APIProfile,
+    requestID: number,
+  ): (progress: TranslationProgress) => void {
+    const content = this.element("div", "lft-llm-result is-streaming");
+    content.append(
+      this.element("div", "lft-llm-label is-streaming", "✦ 正在流式翻译"),
+    );
+    const output = this.element(
+      "div",
+      "lft-translation-stream is-waiting",
+      "正在等待第一个内容块…",
+    );
+    output.setAttribute("aria-live", "polite");
+    content.append(output);
+
+    const footer = this.element("div", "lft-footer");
+    const modelLabel = this.element(
+      "span",
+      "",
+      `${profile.name} · ${profile.model}`,
+    );
+    const count = this.element("span", "", "等待响应");
+    footer.append(modelLabel, count);
+    content.append(footer);
+
+    const stop = this.button("停止", () => {
+      const partial = output.classList.contains("is-waiting")
+        ? ""
+        : output.textContent || "";
+      ++this.requestID;
+      const cancel = this.cancelActiveRequest;
+      this.cancelActiveRequest = null;
+      try {
+        cancel?.();
+      } catch {
+        // The request may already have completed between click and cancellation.
+      }
+      if (partial.trim()) {
+        this.renderOnlineResult(
+          partial.trim(),
+          profile.model,
+          profile.name,
+          "已停止",
+        );
+      } else {
+        this.renderIdle(
+          "■",
+          "已停止翻译",
+          "可以切换模型后重新开始。",
+          this.isWord,
+        );
+      }
+    });
+    stop.classList.add("lft-button-stop");
+    this.frame(`正在使用 ${profile.name}`, content, [stop], true);
+
+    return (progress: TranslationProgress) => {
+      if (requestID !== this.requestID || !this.root.isConnected) return;
+      if (progress.text) {
+        output.classList.remove("is-waiting");
+        output.textContent = progress.text;
+        count.textContent = `${progress.text.length} 字符 · 接收中`;
+        modelLabel.textContent = `${progress.profileName} · ${progress.model}`;
+        const distanceFromBottom =
+          this.root.scrollHeight - this.root.scrollTop - this.root.clientHeight;
+        if (distanceFromBottom < 90)
+          this.root.scrollTop = this.root.scrollHeight;
+      }
+    };
   }
 
   private renderOnlineError(message: string): void {
@@ -513,6 +638,13 @@ export class TranslationCard {
   }
 
   async lookupLocal(): Promise<void> {
+    const cancel = this.cancelActiveRequest;
+    this.cancelActiveRequest = null;
+    try {
+      cancel?.();
+    } catch {
+      // No-op: a previous translation may already have completed.
+    }
     const requestID = ++this.requestID;
     this.renderLoading("正在查询本地词典", "本地词典");
     try {
@@ -535,16 +667,34 @@ export class TranslationCard {
   }
 
   async translateOnline(): Promise<void> {
+    const previousCancel = this.cancelActiveRequest;
+    this.cancelActiveRequest = null;
+    try {
+      previousCancel?.();
+    } catch {
+      // No-op: a previous translation may already have completed.
+    }
     const requestID = ++this.requestID;
-    this.renderLoading("正在使用大模型翻译", "OpenAI-compatible API");
+    const profile = getSelectedAPIProfile(this.selectedProfileID);
+    this.selectedProfileID = profile.id;
+    const updateStreaming = this.renderOnlineStreaming(profile, requestID);
     try {
       const result = await translateWithOpenAI(
         this.isWord ? this.queryText : this.text,
+        {
+          profile,
+          onProgress: updateStreaming,
+          registerCancel: (cancel) => {
+            if (requestID === this.requestID) this.cancelActiveRequest = cancel;
+          },
+        },
       );
       if (requestID !== this.requestID || !this.root.isConnected) return;
-      this.renderOnlineResult(result.text, result.model);
+      this.cancelActiveRequest = null;
+      this.renderOnlineResult(result.text, result.model, result.profileName);
     } catch (error) {
       if (requestID !== this.requestID || !this.root.isConnected) return;
+      this.cancelActiveRequest = null;
       this.renderOnlineError(errorMessage(error));
     }
   }

@@ -4,7 +4,7 @@
 }
 
 .selection-popup.lft-selection-popup {
-  width: min(620px, calc(100vw - 28px)) !important;
+  width: min(660px, calc(100vw - 28px)) !important;
   max-width: none !important;
   flex-wrap: wrap !important;
   overflow: hidden !important;
@@ -37,7 +37,7 @@
   --lft-surface: var(--material-background, #fff);
   --lft-surface-2: color-mix(in srgb, var(--lft-surface) 96%, #7181b7);
   --lft-success: #168343;
-  width: min(620px, calc(100vw - 28px));
+  width: min(660px, calc(100vw - 28px));
   max-height: min(610px, calc(100vh - 96px));
   overflow: auto;
   border: 1px solid var(--lft-border);
@@ -50,8 +50,10 @@
   font-family:
     -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC",
     "Microsoft YaHei", sans-serif;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.58;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
   scrollbar-width: thin;
 }
 
@@ -66,8 +68,7 @@
   min-height: 60px;
   padding: 11px 14px;
   border-bottom: 1px solid var(--lft-border);
-  background: color-mix(in srgb, var(--lft-surface) 94%, transparent);
-  backdrop-filter: blur(10px);
+  background: var(--lft-surface);
 }
 
 .lft-card-title-wrap {
@@ -118,20 +119,23 @@
   display: flex;
   flex: 0 0 auto;
   flex-wrap: wrap;
+  align-items: center;
   justify-content: flex-end;
-  gap: 6px;
+  gap: 7px;
 }
 
 .lft-button {
-  min-height: 29px;
-  padding: 4px 10px;
+  min-height: 34px;
+  padding: 6px 11px;
   border: 1px solid var(--lft-border);
   border-radius: 8px;
   color: var(--lft-text-2);
   background: var(--lft-surface);
-  font: inherit;
-  font-size: 12px;
-  line-height: 1.3;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 20px;
+  appearance: none;
   cursor: pointer;
 }
 
@@ -158,6 +162,51 @@
   border-color: var(--lft-success);
   color: #fff;
   background: var(--lft-success);
+}
+
+.lft-button-annotation {
+  border-color: var(--lft-border);
+  color: var(--lft-text-2);
+  background: var(--lft-surface);
+}
+
+.lft-button-stop {
+  color: #b24949;
+}
+
+.lft-model-picker {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 7px 4px 9px;
+  border: 1px solid var(--lft-border);
+  border-radius: 8px;
+  color: var(--lft-text-3);
+  background: var(--lft-surface-2);
+}
+
+.lft-model-picker-label {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.lft-model-select {
+  width: min(185px, 28vw);
+  min-width: 112px;
+  height: 24px;
+  padding: 0 20px 0 5px;
+  border: 0;
+  outline: 0;
+  color: var(--lft-text);
+  background: var(--lft-surface);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.lft-model-select:disabled {
+  opacity: 0.72;
 }
 
 .lft-card-body {
@@ -325,6 +374,11 @@
 
 .lft-pron-text {
   font-family: "Charis SIL", "Noto Sans", sans-serif;
+}
+
+.lft-pron-audio-label {
+  color: var(--lft-text-3);
+  font-size: 11px;
 }
 
 .lft-audio {
@@ -505,10 +559,59 @@
   margin: 0;
   padding-left: 11px;
   border-left: 2px solid color-mix(in srgb, var(--lft-accent) 35%, transparent);
-  font-size: 13.5px;
+  font-size: 14px;
   line-height: 1.72;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
+}
+
+.lft-translation-stream {
+  min-height: 88px;
+  padding: 11px 13px;
+  border-left: 3px solid var(--lft-accent);
+  border-radius: 0 9px 9px 0;
+  color: var(--lft-text);
+  background: var(--lft-surface-2);
+  font-size: 14px;
+  line-height: 1.72;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.lft-translation-stream:not(.is-waiting)::after {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 3px;
+  vertical-align: -0.12em;
+  background: var(--lft-accent);
+  content: "";
+  animation: lft-caret 0.85s steps(1) infinite;
+}
+
+.lft-translation-stream.is-waiting {
+  color: var(--lft-text-3);
+}
+
+.lft-llm-label.is-streaming::before {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentcolor;
+  content: "";
+  animation: lft-pulse 1.1s ease-in-out infinite;
+}
+
+@keyframes lft-caret {
+  50% {
+    opacity: 0;
+  }
+}
+
+@keyframes lft-pulse {
+  50% {
+    opacity: 0.35;
+  }
 }
 
 .lft-footer {
@@ -546,6 +649,10 @@
   .lft-card-actions {
     width: 100%;
     justify-content: flex-start;
+  }
+
+  .lft-model-select {
+    width: min(210px, 58vw);
   }
 
   .lft-sense {

@@ -7,10 +7,7 @@
       <html:div class="lft-pref-logo">L</html:div>
       <html:div>
         <html:h1>LexiFlow 词典翻译</html:h1>
-        <html:p
-          >单词优先使用本地 MDX/MDD；句子和段落使用 OpenAI-compatible
-          API。</html:p
-        >
+        <html:p>本地多词典优先，多个 OpenAI-compatible API 流式翻译。</html:p>
       </html:div>
     </html:header>
 
@@ -27,7 +24,8 @@
         label="选中句子或段落后自动调用大模型"
       />
       <html:p class="lft-pref-hint">
-        本地词典没有命中单词时不会自动消耗 API，会显示“使用大模型翻译”按钮。
+        本地词典没有命中单词时不会自动消耗
+        API；可修改词形后重查，或手动使用大模型。
       </html:p>
     </html:section>
 
@@ -35,96 +33,57 @@
       <html:div class="lft-section-title">
         <html:div>
           <html:h2>本地词典</html:h2>
-          <html:p
-            >推荐导入 Zotero 数据目录，也可以继续使用外部文件路径。</html:p
-          >
+          <html:p>每部 MDX 独立配置、命名和启停，MDD 资源自动关联。</html:p>
         </html:div>
         <html:div class="lft-inline-actions">
-          <button id="lft-import-dictionaries" label="导入到 Zotero…" />
-          <button id="lft-pick-dictionaries" label="添加外部路径…" />
-          <button id="lft-open-dictionary-folder" label="打开目录" />
-          <button id="lft-clear-dictionaries" label="清空" />
+          <html:button id="lft-add-dictionary" class="lft-primary-button">
+            ＋ 添加词典
+          </html:button>
+          <html:button
+            id="lft-add-external-dictionary"
+            class="lft-secondary-button"
+          >
+            添加外部词典
+          </html:button>
+          <html:button
+            id="lft-open-dictionary-folder"
+            class="lft-secondary-button"
+          >
+            打开目录
+          </html:button>
         </html:div>
       </html:div>
       <html:div class="lft-managed-directory-row">
         <html:span>插件词典目录</html:span>
         <html:code id="lft-managed-dictionary-directory"></html:code>
       </html:div>
-      <html:textarea
-        id="lft-dictionary-paths"
-        class="lft-paths"
-        rows="7"
-        placeholder="/home/user/dicts/牛津.mdx&#10;/home/user/dicts/牛津.mdd&#10;/home/user/dicts/朗文.mdx"
-      ></html:textarea>
+      <html:div id="lft-dictionary-list" class="lft-config-list"></html:div>
       <html:p class="lft-pref-hint">
-        “导入到 Zotero”会复制 MDX，并自动复制同名的 .mdd、.1.mdd、.2.mdd
-        分卷。大文件不会写入
-        zotero.sqlite；数据库只保存路径设置。加密词典暂不支持。
+        “＋ 添加词典”会将所选文件复制到 Zotero
+        数据目录；“添加外部词典”只保存原路径。不会把大型词典写入 zotero.sqlite。
       </html:p>
     </html:section>
 
     <html:section class="lft-pref-card">
-      <html:h2>OpenAI-compatible API</html:h2>
-      <html:div class="lft-form-grid">
-        <html:label for="lft-openai-endpoint">接口地址</html:label>
-        <html:input
-          id="lft-openai-endpoint"
-          type="url"
-          placeholder="https://api.openai.com/v1/chat/completions"
-        />
-
-        <html:label for="lft-openai-api-key">API Key</html:label>
-        <html:input
-          id="lft-openai-api-key"
-          type="password"
-          autocomplete="off"
-          placeholder="本地服务不需要时可留空"
-        />
-
-        <html:label for="lft-openai-model">模型</html:label>
-        <html:input
-          id="lft-openai-model"
-          type="text"
-          placeholder="gpt-4o-mini"
-        />
-
-        <html:label for="lft-target-language">目标语言</html:label>
-        <html:input
-          id="lft-target-language"
-          type="text"
-          placeholder="简体中文"
-        />
-
-        <html:label for="lft-openai-temperature">Temperature</html:label>
-        <html:input
-          id="lft-openai-temperature"
-          type="number"
-          min="0"
-          max="2"
-          step="0.1"
-        />
-
-        <html:label for="lft-openai-prompt">提示词</html:label>
+      <html:div class="lft-section-title">
         <html:div>
-          <html:textarea
-            id="lft-openai-prompt"
-            class="lft-prompt"
-            rows="9"
-          ></html:textarea>
-          <html:p class="lft-pref-hint">
-            支持变量：<html:code>${sourceText}</html:code>、
-            <html:code>${targetLanguage}</html:code>。
-          </html:p>
+          <html:h2>大模型 API</html:h2>
+          <html:p>可配置多个服务，并在每次翻译前从选词卡片中选择。</html:p>
         </html:div>
+        <html:button id="lft-add-api-profile" class="lft-primary-button">
+          ＋ 添加 API
+        </html:button>
       </html:div>
-      <html:div class="lft-test-row">
-        <button id="lft-test-openai" label="保存并测试连接" />
-        <html:span id="lft-settings-status" role="status"></html:span>
-      </html:div>
+      <html:div id="lft-api-profile-list" class="lft-config-list"></html:div>
       <html:p class="lft-pref-hint">
-        API Key 保存在本机 Zotero
-        首选项中。插件只在触发大模型翻译时向所填接口发送选中文本。
+        支持提示词变量：<html:code>${sourceText}</html:code>、
+        <html:code>${targetLanguage}</html:code>。API Key 仅保存在本机 Zotero
+        首选项中。
       </html:p>
     </html:section>
+
+    <html:div class="lft-global-status-row">
+      <html:span id="lft-settings-status" role="status"></html:span>
+    </html:div>
   </html:div>
 </vbox>
