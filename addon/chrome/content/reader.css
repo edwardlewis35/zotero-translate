@@ -213,6 +213,29 @@
   padding: 0;
 }
 
+.lft-annotation-status {
+  margin: 10px 14px 0;
+  padding: 8px 10px;
+  border: 1px solid var(--lft-border);
+  border-radius: 8px;
+  color: var(--lft-text-2);
+  background: var(--lft-surface-2);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.lft-annotation-status[data-kind="success"] {
+  border-color: color-mix(in srgb, var(--lft-success) 38%, var(--lft-border));
+  color: var(--lft-success);
+  background: color-mix(in srgb, var(--lft-success) 8%, var(--lft-surface));
+}
+
+.lft-annotation-status[data-kind="error"] {
+  border-color: rgb(190 61 61 / 35%);
+  color: #b23d3d;
+  background: rgb(190 61 61 / 8%);
+}
+
 .lft-state {
   display: grid;
   min-height: 158px;

@@ -395,6 +395,19 @@ export class TranslationCard {
     return dictionaries.join("\n\n").slice(0, 12000);
   }
 
+  private showAnnotationStatus(
+    message: string,
+    kind: "success" | "error",
+  ): void {
+    let status = this.root.querySelector<HTMLElement>(".lft-annotation-status");
+    if (!status) {
+      status = this.element("div", "lft-annotation-status");
+      this.root.querySelector(".lft-card-body")?.prepend(status);
+    }
+    status.dataset.kind = kind;
+    status.textContent = message;
+  }
+
   private annotationButton(translation: string): HTMLButtonElement | null {
     const saveAnnotation = this.saveAnnotation;
     if (!saveAnnotation) return null;
@@ -402,17 +415,27 @@ export class TranslationCard {
     button = this.button(
       "写入批注",
       () => {
+        this.root.querySelector(".lft-annotation-status")?.remove();
         button.disabled = true;
         button.textContent = "正在写入…";
         void saveAnnotation(translation)
           .then(() => {
             button.textContent = "✓ 已创建高亮批注";
             button.classList.add("lft-button-success");
+            this.showAnnotationStatus(
+              "翻译内容已保存到 Zotero 高亮批注。",
+              "success",
+            );
           })
           .catch((error: unknown) => {
+            const message = errorMessage(error);
+            Zotero.logError(
+              error instanceof Error ? error : new Error(message),
+            );
             button.disabled = false;
             button.textContent = "重试写入";
-            button.title = `写入批注失败：${errorMessage(error)}`;
+            button.title = `写入批注失败：${message}`;
+            this.showAnnotationStatus(`写入批注失败：${message}`, "error");
           });
       },
       false,

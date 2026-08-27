@@ -11,7 +11,7 @@
 - 每个 API 的提示词、接口地址、API Key、模型、目标语言和 Temperature 均可配置；
 - 译文按段落或句子分行，词典结果按“发音、词性释义、标签、词形、来源”显示；
 - 翻译卡片直接嵌入 Zotero 原生选词标记弹窗，并位于颜色/批注工具栏下方；
-- 可一键创建 Zotero 高亮，并把本次本地释义或大模型译文写入批注；
+- 可一键创建 Zotero 高亮，并把本次本地释义或大模型译文写入批注；超长选区会按 Zotero 的位置数据上限自动拆成连续高亮；
 - 支持 MDD 发音资源，以及同名的 .mdd、.1.mdd、.2.mdd 分卷；
 - 只显示词典中实际解析出的音标，不再用词头冒充音标。
 
@@ -41,7 +41,7 @@
 
 PDF 阅读器出现文本选择弹窗时，插件会把翻译卡片插入弹窗。双击通常是选中单词最快的方式；拖动选择句子或段落也可以。
 
-翻译完成后点击“写入批注”，插件会为原始选中文本创建 Zotero 高亮，并把当前词典释义或大模型译文写入该高亮的批注内容。
+翻译完成后点击“写入批注”，插件会为原始选中文本创建 Zotero 高亮，并把当前词典释义或大模型译文写入该高亮的批注内容。PDF 长选区可能包含数百个矩形坐标；当位置数据超过 Zotero 单条批注的限制时，插件会自动拆成多条相邻高亮，并在每条中保留同一份译文。
 
 ## 配置本地 MDX/MDD
 
@@ -112,7 +112,7 @@ nvm use 22
 仓库包含两个 GitHub Actions 工作流：
 
 - `build.yml`：向任意分支推送、创建 Pull Request 或手动运行时，执行格式检查、TypeScript 检查和 XPI 构建，并上传构建产物；
-- `release.yml`：推送形如 `v0.3.0` 的标签时，校验标签与 `package.json` 版本一致，构建正式 XPI，生成源码 ZIP、`update.json` 和 SHA-256 校验文件，然后创建 GitHub Release。
+- `release.yml`：推送形如 `v0.3.1` 的标签时，校验标签与 `package.json` 版本一致，构建正式 XPI，生成源码 ZIP、`update.json` 和 SHA-256 校验文件，然后创建 GitHub Release。
 
 首次发布：
 
@@ -120,8 +120,8 @@ nvm use 22
 git add .
 git commit -m "chore: add GitHub build and release workflows"
 git push
-git tag v0.3.0
-git push origin v0.3.0
+git tag v0.3.1
+git push origin v0.3.1
 ```
 
 发布工作流使用仓库自带的 `GITHUB_TOKEN`，并已声明 `contents: write`，通常不需要配置额外 Secret。如果组织策略强制工作流只读，需要由仓库管理员允许 GitHub Actions 写入 Releases。
@@ -134,7 +134,7 @@ https://github.com/edwardlewis35/zotero-translate/releases/latest/download/updat
 
 如果需要让 Zotero 在未登录 GitHub 的情况下自动更新，仓库及 Release 必须公开；私有仓库仍可运行构建和发布，但 Zotero 无法匿名下载更新文件。
 
-以后发布新版本时，先同步修改 `package.json` 与 `package-lock.json` 中的版本，再推送同名 `v<版本>` 标签。带连字符的版本（例如 `0.3.0-beta.1`）会自动发布为 GitHub Pre-release。
+以后发布新版本时，先同步修改 `package.json` 与 `package-lock.json` 中的版本，再推送同名 `v<版本>` 标签。带连字符的版本（例如 `0.3.1-beta.1`）会自动发布为 GitHub Pre-release。
 
 ## 项目结构
 
