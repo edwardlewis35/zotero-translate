@@ -1,12 +1,20 @@
 import { defineConfig } from "zotero-plugin-scaffold";
 import pkg from "./package.json";
 
+const githubRepository =
+  process.env.GITHUB_REPOSITORY ?? "example/zotero9-dict-translator";
+const githubReleaseBase = `https://github.com/${githubRepository}/releases`;
+const updateURL = `${githubReleaseBase}/latest/download/update.json`;
+
 export default defineConfig({
   source: ["src", "addon"],
   dist: "build",
   name: pkg.config.addonName,
   id: pkg.config.addonID,
   namespace: pkg.config.addonRef,
+  xpiName: "lexiflow-zotero9-translator",
+  xpiDownloadLink: `${githubReleaseBase}/download/v{{version}}/{{xpiName}}.xpi`,
+  updateURL,
   build: {
     assets: ["addon/**/*.*"],
     makeManifest: {
@@ -20,6 +28,7 @@ export default defineConfig({
       author: pkg.author,
       description: pkg.description,
       buildVersion: pkg.version,
+      updateURL,
     },
     esbuildOptions: [
       {

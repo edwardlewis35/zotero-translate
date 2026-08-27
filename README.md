@@ -111,6 +111,35 @@ nvm install 22
 nvm use 22
 ```
 
+## GitHub 自动构建与发布
+
+仓库包含两个 GitHub Actions 工作流：
+
+- `build.yml`：向任意分支推送、创建 Pull Request 或手动运行时，执行格式检查、TypeScript 检查和 XPI 构建，并上传构建产物；
+- `release.yml`：推送形如 `v0.2.3` 的标签时，校验标签与 `package.json` 版本一致，构建正式 XPI，生成源码 ZIP、`update.json` 和 SHA-256 校验文件，然后创建 GitHub Release。
+
+首次发布：
+
+```bash
+git add .
+git commit -m "chore: add GitHub build and release workflows"
+git push
+git tag v0.2.3
+git push origin v0.2.3
+```
+
+发布工作流使用仓库自带的 `GITHUB_TOKEN`，并已声明 `contents: write`，通常不需要配置额外 Secret。如果组织策略强制工作流只读，需要由仓库管理员允许 GitHub Actions 写入 Releases。
+
+CI 会根据 `GITHUB_REPOSITORY` 自动生成当前仓库对应的下载地址。正式 XPI 中的更新地址为：
+
+```text
+https://github.com/<owner>/<repository>/releases/latest/download/update.json
+```
+
+如果需要让 Zotero 在未登录 GitHub 的情况下自动更新，仓库及 Release 必须公开；私有仓库仍可运行构建和发布，但 Zotero 无法匿名下载更新文件。
+
+以后发布新版本时，先同步修改 `package.json` 与 `package-lock.json` 中的版本，再推送同名 `v<版本>` 标签。带连字符的版本（例如 `0.3.0-beta.1`）会自动发布为 GitHub Pre-release。
+
 ## 项目结构
 
 ```text
@@ -123,6 +152,8 @@ src/dictionary/               MDX/MDD 导入、加载、结构化解析与缓存
 src/openai.ts                  OpenAI-compatible Chat Completions
 src/preferences.ts             Zotero 设置页逻辑
 src/shims/                     js-mdict 的 Zotero 文件与解压适配层
+.github/workflows/build.yml    GitHub 持续集成构建
+.github/workflows/release.yml  标签触发的 GitHub Release 发布
 ```
 
 ## 许可证
