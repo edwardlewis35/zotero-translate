@@ -2,7 +2,7 @@ import { defineConfig } from "zotero-plugin-scaffold";
 import pkg from "./package.json";
 
 const githubRepository =
-  process.env.GITHUB_REPOSITORY ?? "example/zotero9-dict-translator";
+  process.env.GITHUB_REPOSITORY ?? "edwardlewis35/zotero-translate";
 const githubReleaseBase = `https://github.com/${githubRepository}/releases`;
 const updateURL = `${githubReleaseBase}/latest/download/update.json`;
 

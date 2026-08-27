@@ -116,7 +116,7 @@ nvm use 22
 仓库包含两个 GitHub Actions 工作流：
 
 - `build.yml`：向任意分支推送、创建 Pull Request 或手动运行时，执行格式检查、TypeScript 检查和 XPI 构建，并上传构建产物；
-- `release.yml`：推送形如 `v0.2.3` 的标签时，校验标签与 `package.json` 版本一致，构建正式 XPI，生成源码 ZIP、`update.json` 和 SHA-256 校验文件，然后创建 GitHub Release。
+- `release.yml`：推送形如 `v0.2.4` 的标签时，校验标签与 `package.json` 版本一致，构建正式 XPI，生成源码 ZIP、`update.json` 和 SHA-256 校验文件，然后创建 GitHub Release。
 
 首次发布：
 
@@ -124,16 +124,16 @@ nvm use 22
 git add .
 git commit -m "chore: add GitHub build and release workflows"
 git push
-git tag v0.2.3
-git push origin v0.2.3
+git tag v0.2.4
+git push origin v0.2.4
 ```
 
 发布工作流使用仓库自带的 `GITHUB_TOKEN`，并已声明 `contents: write`，通常不需要配置额外 Secret。如果组织策略强制工作流只读，需要由仓库管理员允许 GitHub Actions 写入 Releases。
 
-CI 会根据 `GITHUB_REPOSITORY` 自动生成当前仓库对应的下载地址。正式 XPI 中的更新地址为：
+默认上游仓库是 `edwardlewis35/zotero-translate`。CI 也会根据 `GITHUB_REPOSITORY` 校验当前仓库，正式 XPI 中的更新地址为：
 
 ```text
-https://github.com/<owner>/<repository>/releases/latest/download/update.json
+https://github.com/edwardlewis35/zotero-translate/releases/latest/download/update.json
 ```
 
 如果需要让 Zotero 在未登录 GitHub 的情况下自动更新，仓库及 Release 必须公开；私有仓库仍可运行构建和发布，但 Zotero 无法匿名下载更新文件。
