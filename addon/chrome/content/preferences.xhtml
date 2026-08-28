@@ -58,6 +58,15 @@
         <html:code id="lft-managed-dictionary-directory"></html:code>
       </html:div>
       <html:div id="lft-dictionary-list" class="lft-config-list"></html:div>
+      <checkbox
+        id="lft-load-audio"
+        native="true"
+        label="启用词典发音（点击播放时才加载 MDD）"
+      />
+      <html:p class="lft-pref-hint">
+        默认关闭。关闭时查词不扫描或读取 MDD；开启后仅在点击发音按钮时加载。
+        不影响 MDX 中的释义和音标，也不会删除已导入的资源文件。
+      </html:p>
       <html:p class="lft-pref-hint">
         “＋ 添加词典”会将所选文件复制到 Zotero
         数据目录；“添加外部词典”只保存原路径。不会把大型词典写入 zotero.sqlite。

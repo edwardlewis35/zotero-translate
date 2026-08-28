@@ -258,16 +258,46 @@ export class TranslationCard {
       event.preventDefault();
       event.stopPropagation();
     });
-    button.addEventListener("click", (event) => {
+    button.addEventListener("click", async (event) => {
       event.preventDefault();
       event.stopPropagation();
-      const player = this.doc.createElement("audio");
-      player.src = audio.url;
-      player.hidden = true;
-      player.addEventListener("ended", () => player.remove());
-      player.addEventListener("error", () => player.remove());
-      this.root.append(player);
-      void player.play().catch(() => player.remove());
+      const requestID = this.requestID;
+      button.disabled = true;
+      button.textContent = "…";
+      let failed = false;
+      let player: HTMLAudioElement | undefined;
+      try {
+        if (!getPref("loadDictionaryAudio"))
+          throw new Error("词典发音已在设置中关闭");
+        const url = audio.url || (await audio.load?.());
+        if (
+          requestID !== this.requestID ||
+          !this.root.isConnected ||
+          !button.isConnected
+        )
+          return;
+        if (!getPref("loadDictionaryAudio"))
+          throw new Error("词典发音已在设置中关闭");
+        if (!url) throw new Error("没有可播放的发音资源");
+        player = this.doc.createElement("audio");
+        player.src = url;
+        player.hidden = true;
+        player.addEventListener("ended", () => player?.remove());
+        player.addEventListener("error", () => player?.remove());
+        this.root.append(player);
+        await player.play();
+        button.title = `播放：${audio.label}`;
+      } catch (error) {
+        failed = true;
+        player?.remove();
+        button.textContent = "!";
+        button.title = `无法播放：${errorMessage(error)}`;
+        Zotero.logError(error as Error);
+      } finally {
+        button.disabled = false;
+        if (!failed) button.textContent = "▶";
+        button.setAttribute("aria-label", button.title);
+      }
     });
     return button;
   }
@@ -420,10 +450,10 @@ export class TranslationCard {
         button.textContent = "正在写入…";
         void saveAnnotation(translation)
           .then(() => {
-            button.textContent = "✓ 已创建高亮批注";
+            button.textContent = "✓ 已创建下划线批注";
             button.classList.add("lft-button-success");
             this.showAnnotationStatus(
-              "翻译内容已保存到 Zotero 高亮批注。",
+              "翻译内容已保存到 Zotero 下划线批注。",
               "success",
             );
           })
@@ -439,17 +469,26 @@ export class TranslationCard {
           });
       },
       false,
-      "对当前选中文本创建高亮，并把本次翻译写入批注内容",
+      "对当前选中文本创建下划线，并把本次翻译写入批注内容",
     );
     button.classList.add("lft-button-annotation");
     return button;
   }
 
-  private renderLocalResult(result: LocalLookupResult): void {
+  private renderLocalResult(result: LocalLookupResult, loading = false): void {
     this.queryText = result.word;
     const content = this.element("div");
     for (const entry of result.entries) {
       content.append(this.renderDictionary(entry));
+    }
+    if (loading) {
+      content.append(
+        this.element(
+          "div",
+          "lft-state-detail lft-local-progress",
+          "继续查询其他词典…",
+        ),
+      );
     }
     if (result.errors.length > 0) {
       content.append(
@@ -460,9 +499,9 @@ export class TranslationCard {
         ),
       );
     }
-    const annotationButton = this.annotationButton(
-      this.localAnnotationText(result),
-    );
+    const annotationButton = loading
+      ? null
+      : this.annotationButton(this.localAnnotationText(result));
     this.frame(
       `本地词典 · 命中 ${result.entries.length}/${result.configuredDictionaries}`,
       content,
@@ -670,8 +709,25 @@ export class TranslationCard {
     }
     const requestID = ++this.requestID;
     this.renderLoading("正在查询本地词典", "本地词典");
+    let displayedEntries = 0;
     try {
-      const result = await this.dictionaries.lookup(this.queryText);
+      const result = await this.dictionaries.lookup(this.queryText, {
+        // Reader.append() can mount the popup after this callback returns.
+        // Do not cancel an initial query just because its DOM isn't mounted yet.
+        isCancelled: () => requestID !== this.requestID,
+        onProgress: ({ result, completed, total, message }) => {
+          if (requestID !== this.requestID || !this.root.isConnected) return;
+          if (result.entries.length > displayedEntries) {
+            displayedEntries = result.entries.length;
+            this.renderLocalResult(result, true);
+          }
+          const status = this.root.querySelector(
+            ".lft-local-progress, .lft-state-detail",
+          );
+          if (status)
+            status.textContent = `${message}（${completed}/${total}）`;
+        },
+      });
       if (requestID !== this.requestID || !this.root.isConnected) return;
       if (result.entries.length > 0) {
         this.renderLocalResult(result);

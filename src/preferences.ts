@@ -65,6 +65,12 @@ export class PreferencesController {
       "autoTranslateParagraph",
       getPref("autoTranslateParagraph"),
     );
+    this.bindCheckbox(
+      doc,
+      "lft-load-audio",
+      "loadDictionaryAudio",
+      getPref("loadDictionaryAudio"),
+    );
 
     this.dictionaryConfigs = loadDictionaryConfigs();
     this.apiProfiles = loadAPIProfiles();
@@ -132,13 +138,23 @@ export class PreferencesController {
   private bindCheckbox(
     doc: Document,
     id: string,
-    key: "autoTranslateWord" | "autoTranslateParagraph",
+    key: "autoTranslateWord" | "autoTranslateParagraph" | "loadDictionaryAudio",
     value: boolean,
   ): void {
     const checkbox = control<Element & { checked: boolean }>(doc, id);
     checkbox.checked = value;
     checkbox.addEventListener("command", () => {
       setPref(key, checkbox.checked);
+      if (key === "loadDictionaryAudio") {
+        if (!checkbox.checked) this.dictionaries.releaseAudio();
+        this.setStatus(
+          doc,
+          checkbox.checked
+            ? "发音已开启：重新查词后可点击播放，届时才读取 MDD"
+            : "发音已关闭：不读取 MDD，词典释义和音标不受影响",
+          "ok",
+        );
+      }
     });
   }
 
@@ -154,7 +170,7 @@ export class PreferencesController {
 
   private saveDictionaryState(doc: Document, message?: string): void {
     saveDictionaryConfigs(this.dictionaryConfigs);
-    this.dictionaries.reset();
+    this.dictionaries.configurationChanged();
     this.renderDictionaryConfigs(doc);
     if (message) this.setStatus(doc, message, "ok");
   }
@@ -195,7 +211,7 @@ export class PreferencesController {
           name.value.trim() ||
           pathParts(config.mdxPath).filename.replace(/\.mdx$/iu, "");
         saveDictionaryConfigs(this.dictionaryConfigs);
-        this.dictionaries.reset();
+        this.dictionaries.configurationChanged();
       });
       identity.append(this.html(doc, "span", "lft-config-badge", "MDX"), name);
 

@@ -26,7 +26,8 @@ export interface WordForm {
 export interface AudioAsset {
   label: string;
   region: string;
-  url: string;
+  url?: string;
+  load?: () => Promise<string>;
 }
 
 export interface AudioReference {
@@ -50,4 +51,16 @@ export interface LocalLookupResult {
   entries: DictionaryEntry[];
   errors: string[];
   configuredDictionaries: number;
+}
+
+export interface LocalLookupProgress {
+  result: LocalLookupResult;
+  completed: number;
+  total: number;
+  message: string;
+}
+
+export interface LocalLookupOptions {
+  onProgress?: (progress: LocalLookupProgress) => void;
+  isCancelled?: () => boolean;
 }

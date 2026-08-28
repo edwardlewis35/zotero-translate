@@ -27,6 +27,7 @@ export interface APIProfile {
 export interface PluginSettings {
   autoTranslateWord: boolean;
   autoTranslateParagraph: boolean;
+  loadDictionaryAudio: boolean;
   dictionaryPaths: string;
   dictionaryConfigs: string;
   apiProfiles: string;
@@ -52,6 +53,7 @@ export const DEFAULT_API_PROFILE_ID = "default-openai";
 const defaults: PluginSettings = {
   autoTranslateWord: true,
   autoTranslateParagraph: true,
+  loadDictionaryAudio: false,
   dictionaryPaths: "",
   dictionaryConfigs: "",
   apiProfiles: "",
@@ -84,6 +86,7 @@ export function loadSettings(): PluginSettings {
   return {
     autoTranslateWord: getPref("autoTranslateWord"),
     autoTranslateParagraph: getPref("autoTranslateParagraph"),
+    loadDictionaryAudio: getPref("loadDictionaryAudio"),
     dictionaryPaths: getPref("dictionaryPaths"),
     dictionaryConfigs: getPref("dictionaryConfigs"),
     apiProfiles: getPref("apiProfiles"),

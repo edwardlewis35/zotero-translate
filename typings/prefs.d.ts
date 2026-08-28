@@ -9,6 +9,7 @@ declare namespace _ZoteroTypes {
     PluginPrefsMap: {
       "autoTranslateWord": boolean;
       "autoTranslateParagraph": boolean;
+      "loadDictionaryAudio": boolean;
       "dictionaryPaths": string;
       "dictionaryConfigs": string;
       "apiProfiles": string;

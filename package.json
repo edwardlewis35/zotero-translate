@@ -1,6 +1,6 @@
 {
   "name": "zotero9-dict-translator",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "type": "module",
   "private": true,
   "description": "A Zotero 9 PDF translation plugin with multiple local MDX/MDD dictionaries and an OpenAI-compatible fallback.",
@@ -15,6 +15,7 @@
   "scripts": {
     "start": "zotero-plugin serve",
     "build": "tsc --noEmit && zotero-plugin build",
+    "test": "node scripts/run-tests.mjs",
     "lint": "prettier --check .",
     "format": "prettier --write ."
   },
@@ -29,7 +30,7 @@
   },
   "dependencies": {
     "buffer": "^6.0.3",
-    "js-mdict": "^7.0.0",
+    "js-mdict": "7.0.0",
     "pako": "^2.1.0"
   },
   "devDependencies": {

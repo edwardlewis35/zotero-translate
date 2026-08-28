@@ -60,7 +60,7 @@ function annotationJSON(
     id: key,
     key,
     libraryID: attachment.libraryID,
-    type: "highlight",
+    type: "underline",
     text: selection.text,
     comment: translation,
     color: selection.color || Zotero.Annotations.DEFAULT_COLOR,
@@ -81,7 +81,7 @@ function splitIfRequired(
   }
   const split = Zotero.Annotations.splitAnnotationJSON(annotation);
   if (split.length === 0) {
-    throw new Error("选区跨度过大，无法转换为 Zotero 高亮批注");
+    throw new Error("选区跨度过大，无法转换为 Zotero 下划线批注");
   }
   // splitAnnotationJSON() assigns every chunk a new key. Keep the reader-side
   // id in sync as well so an immediate refresh cannot temporarily identify
@@ -89,7 +89,7 @@ function splitIfRequired(
   return split.map((part) => ({ ...part, id: part.key }));
 }
 
-/** Create Zotero highlights whose annotation comment contains the translation. */
+/** Create Zotero underlines whose annotation comment contains the translation. */
 export async function saveTranslationAnnotation(
   context: TranslationAnnotationContext,
   translation: string,

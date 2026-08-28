@@ -128,6 +128,7 @@ const normalItems = await saveTranslationAnnotation(
 );
 
 assert.equal(normalItems.length, 1);
+assert.equal(savedJSON[0].type, "underline");
 assert.equal(savedJSON[0].text, "selected source text");
 assert.equal(savedJSON[0].comment, "翻译结果");
 assert.deepEqual(savedJSON[0].position, {
@@ -143,7 +144,7 @@ assert.equal(readerUpdates.length, 1);
 
 // A long PDF selection can exceed Zotero's per-annotation position limit even
 // when the translation itself is short. It must be split into valid adjacent
-// highlights, with the translation retained on every chunk.
+// underlines, with the translation retained on every chunk.
 reset();
 positionMaxSize = 10;
 const longRects = Array.from({ length: 20 }, (_, index) => [
@@ -168,6 +169,7 @@ const splitItems = await saveTranslationAnnotation(
 );
 
 assert.equal(splitItems.length, 2);
+assert.ok(savedJSON.every((annotation) => annotation.type === "underline"));
 assert.deepEqual(
   savedJSON.map(({ id, key }) => ({ id, key })),
   [

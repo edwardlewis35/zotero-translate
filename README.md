@@ -11,8 +11,8 @@
 - 每个 API 的提示词、接口地址、API Key、模型、目标语言和 Temperature 均可配置；
 - 译文按段落或句子分行，词典结果按“发音、词性释义、标签、词形、来源”显示；
 - 翻译卡片直接嵌入 Zotero 原生选词标记弹窗，并位于颜色/批注工具栏下方；
-- 可一键创建 Zotero 高亮，并把本次本地释义或大模型译文写入批注；超长选区会按 Zotero 的位置数据上限自动拆成连续高亮；
-- 支持 MDD 发音资源，以及同名的 .mdd、.1.mdd、.2.mdd 分卷；
+- 可一键创建 Zotero 下划线，并把本次本地释义或大模型译文写入批注；超长选区会按 Zotero 的位置数据上限自动拆成连续下划线；
+- MDD 发音可选启用，默认关闭；开启后点击发音时才读取同名的 .mdd、.1.mdd、.2.mdd 分卷；
 - 只显示词典中实际解析出的音标，不再用词头冒充音标。
 
 ## 运行要求
@@ -41,7 +41,7 @@
 
 PDF 阅读器出现文本选择弹窗时，插件会把翻译卡片插入弹窗。双击通常是选中单词最快的方式；拖动选择句子或段落也可以。
 
-翻译完成后点击“写入批注”，插件会为原始选中文本创建 Zotero 高亮，并把当前词典释义或大模型译文写入该高亮的批注内容。PDF 长选区可能包含数百个矩形坐标；当位置数据超过 Zotero 单条批注的限制时，插件会自动拆成多条相邻高亮，并在每条中保留同一份译文。
+翻译完成后点击“写入批注”，插件会为原始选中文本创建 Zotero 下划线，并把当前词典释义或大模型译文写入其原生批注内容。PDF 长选区可能包含数百个矩形坐标；当位置数据超过 Zotero 单条批注的限制时，插件会自动拆成多条相邻下划线，并在每条中保留同一份译文。原有触发方式不变，不会自动修改已经保存的高亮。
 
 ## 配置本地 MDX/MDD
 
@@ -55,7 +55,9 @@ PDF 阅读器出现文本选择弹窗时，插件会把翻译卡片插入弹窗�
 
 也可以点击“添加外部词典”，直接使用原位置文件。每部词典会作为独立卡片显示，可单独命名、启用、停用或删除；右上角的“＋”用于继续增加词典，不再把所有路径堆在一个文本框内。
 
-只填写 MDX 也可以。插件会扫描 MDX 所在目录并自动关联同名 MDD 与编号分卷。首次使用大型词典时需要建立索引，可能短暂占用 CPU。
+只填写 MDX 也可以。在“本地词典”设置中勾选“启用词典发音”，重新查词后会显示发音按钮；点击时才扫描 MDX 所在目录、关联同名 MDD 与编号分卷并加载音频。默认关闭，关闭时查词不扫描或读取 MDD，不影响音标和文字释义，也不会删除已导入的 MDD。导入操作仍按原有规则复制关联文件。
+
+MDX 按词典分别缓存，索引按块建立并让出界面线程，不再反复拼接或整体排序全部词头。多部词典逐项显示命中结果，重复查询复用解析结果；重命名或新增词典不会丢弃未变词典的索引。首次使用大型词典仍需要解压和读取索引，并不保证零等待。索引适配器固定使用 `js-mdict 7.0.0`，升级该依赖前需要运行 MDX/MDD 回归测试。
 
 当前实现不会执行词典内的脚本，也不会加载词典自带 CSS，而是将常见词典 HTML 安全解析为通用结构。不同来源的 MDX 标记并没有统一标准，因此少数高度定制词典可能只显示纯文本释义。加密 MDX/MDD 暂不支持。
 
@@ -97,6 +99,7 @@ http://127.0.0.1:8000/v1/chat/completions
 
 ```bash
 npm install
+npm test
 npm run build
 ```
 
@@ -112,7 +115,7 @@ nvm use 22
 仓库包含两个 GitHub Actions 工作流：
 
 - `build.yml`：向任意分支推送、创建 Pull Request 或手动运行时，执行格式检查、TypeScript 检查和 XPI 构建，并上传构建产物；
-- `release.yml`：推送形如 `v0.3.1` 的标签时，校验标签与 `package.json` 版本一致，构建正式 XPI，生成源码 ZIP、`update.json` 和 SHA-256 校验文件，然后创建 GitHub Release。
+- `release.yml`：推送形如 `v0.3.2` 的标签时，校验标签与 `package.json` 版本一致，构建正式 XPI，生成源码 ZIP、`update.json` 和 SHA-256 校验文件，然后创建 GitHub Release。
 
 首次发布：
 
@@ -120,8 +123,8 @@ nvm use 22
 git add .
 git commit -m "chore: add GitHub build and release workflows"
 git push
-git tag v0.3.1
-git push origin v0.3.1
+git tag v0.3.2
+git push origin v0.3.2
 ```
 
 发布工作流使用仓库自带的 `GITHUB_TOKEN`，并已声明 `contents: write`，通常不需要配置额外 Secret。如果组织策略强制工作流只读，需要由仓库管理员允许 GitHub Actions 写入 Releases。
@@ -134,7 +137,7 @@ https://github.com/edwardlewis35/zotero-translate/releases/latest/download/updat
 
 如果需要让 Zotero 在未登录 GitHub 的情况下自动更新，仓库及 Release 必须公开；私有仓库仍可运行构建和发布，但 Zotero 无法匿名下载更新文件。
 
-以后发布新版本时，先同步修改 `package.json` 与 `package-lock.json` 中的版本，再推送同名 `v<版本>` 标签。带连字符的版本（例如 `0.3.1-beta.1`）会自动发布为 GitHub Pre-release。
+以后发布新版本时，先同步修改 `package.json` 与 `package-lock.json` 中的版本，再推送同名 `v<版本>` 标签。带连字符的版本（例如 `0.3.2-beta.1`）会自动发布为 GitHub Pre-release。
 
 ## 项目结构
 
@@ -143,7 +146,7 @@ addon/                         Zotero 清单、默认首选项和样式
 src/addon.ts                   生命周期与设置菜单
 src/reader.ts                  PDF 选词事件
 src/ui/card.ts                 翻译卡片渲染
-src/annotation.ts              创建高亮并写入翻译批注
+src/annotation.ts              创建下划线并写入翻译批注
 src/dictionary/               MDX/MDD 导入、加载、结构化解析与缓存
 src/openai.ts                  OpenAI-compatible Chat Completions
 src/preferences.ts             Zotero 设置页逻辑

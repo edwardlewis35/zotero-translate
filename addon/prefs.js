@@ -1,5 +1,6 @@
 pref("__prefsPrefix__.autoTranslateWord", true);
 pref("__prefsPrefix__.autoTranslateParagraph", true);
+pref("__prefsPrefix__.loadDictionaryAudio", false);
 pref("__prefsPrefix__.dictionaryPaths", "");
 pref("__prefsPrefix__.dictionaryConfigs", "");
 pref("__prefsPrefix__.apiProfiles", "");

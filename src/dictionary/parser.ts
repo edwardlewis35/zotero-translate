@@ -199,6 +199,10 @@ function extractStructuredSenses(doc: Document): DictionarySense[] {
 
 export function definitionToPlainText(definition: string): string {
   const doc = new DOMParser().parseFromString(definition, "text/html");
+  return documentToPlainText(doc);
+}
+
+function documentToPlainText(doc: Document): string {
   doc
     .querySelectorAll("script, style, noscript, template, svg")
     .forEach((node) => node.remove());
@@ -221,11 +225,6 @@ export function definitionToPlainText(definition: string): string {
     .replace(/[\t ]+\n/gu, "\n")
     .replace(/\n[\t ]+/gu, "\n")
     .replace(/\n{2,}/gu, "\n");
-}
-
-function fallbackSenses(definition: string): DictionarySense[] {
-  const plain = definitionToPlainText(definition);
-  return parsePlainTextSenses(plain);
 }
 
 function extractForms(plain: string): WordForm[] {
@@ -271,6 +270,10 @@ function extractTags(plain: string): string[] {
 
 export function extractAudioReferences(definition: string): AudioReference[] {
   const doc = new DOMParser().parseFromString(definition, "text/html");
+  return audioReferencesFromDocument(doc);
+}
+
+function audioReferencesFromDocument(doc: Document): AudioReference[] {
   const output: AudioReference[] = [];
   const seen = new Set<string>();
   for (const element of queryAll<HTMLElement>(doc, "[href], [src]")) {
@@ -309,16 +312,20 @@ export function extractAudioReferences(definition: string): AudioReference[] {
 export function parseDefinition(
   definition: string,
   _headword: string,
+  options: { includeAudio?: boolean } = {},
 ): ParsedDefinition {
   const doc = new DOMParser().parseFromString(definition, "text/html");
   doc
     .querySelectorAll("script, style, noscript, template")
     .forEach((node) => node.remove());
-  const plain = definitionToPlainText(definition);
-  const audioReferences = extractAudioReferences(definition);
+  const audioReferences =
+    options.includeAudio === false ? [] : audioReferencesFromDocument(doc);
   const pronunciations = extractPronunciations(doc);
   const structured = extractStructuredSenses(doc);
-  const fallback = fallbackSenses(definition);
+  // Extract structured fields first; plain-text conversion mutates the same
+  // inert document. Parsing a single entry no longer creates four HTML DOMs.
+  const plain = documentToPlainText(doc);
+  const fallback = parsePlainTextSenses(plain);
   const structuredIsFlattened =
     structured.length <= 1 &&
     (structured[0]?.translation.length || 0) > 360 &&
