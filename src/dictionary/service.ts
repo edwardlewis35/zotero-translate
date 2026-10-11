@@ -426,6 +426,7 @@ export class LocalDictionaryService {
             .map((reference) => ({
               label: reference.label,
               region: reference.region,
+              resource: reference.resource,
               load: this.audioLoader(dictionary, reference),
             }));
           entries.push({

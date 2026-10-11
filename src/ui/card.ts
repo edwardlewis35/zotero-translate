@@ -15,6 +15,7 @@ import {
 } from "../prefs";
 
 const STYLE_ID = "lexiflowdicttranslator-reader-style";
+let nextCardID = 0;
 
 function compactSelection(text: string): string {
   const normalized = text.replace(/\s+/gu, " ").trim();
@@ -58,6 +59,9 @@ export class TranslationCard {
   private queryText: string;
   private selectedProfileID = getPref("selectedApiProfileId");
   private cancelActiveRequest: (() => void) | null = null;
+  private readonly cardID = ++nextCardID;
+  private selectedDictionaryIndex = 0;
+  private readonly expandedDictionarySources = new Set<string>();
 
   constructor(
     private readonly doc: Document,
@@ -310,9 +314,10 @@ export class TranslationCard {
         this.element("span", "lft-pron-region", pronunciation.region),
         this.element("span", "lft-pron-text", pronunciation.text),
       );
-      const audio =
-        entry.audio.find((value) => value.region === pronunciation.region) ||
-        entry.audio[index];
+      const audio = pronunciation.resource
+        ? entry.audio.find((value) => value.resource === pronunciation.resource)
+        : entry.audio.find((value) => value.region === pronunciation.region) ||
+          entry.audio[index];
       if (audio) item.append(this.audioButton(audio));
       list.append(item);
     });
@@ -345,18 +350,91 @@ export class TranslationCard {
     section.append(header);
 
     const senses = this.element("div", "lft-senses");
+    let previousPartOfSpeech = "";
+    let previousHeading = "";
+    const laterSenses: HTMLElement[] = [];
+    const initialSenseCount = 6;
+    const expanded = this.expandedDictionarySources.has(entry.source);
     entry.senses.forEach((sense, index) => {
+      if (sense.partOfSpeech && sense.partOfSpeech !== previousPartOfSpeech) {
+        const heading = this.element("div", "lft-pos-heading");
+        heading.append(this.element("span", "lft-pos", sense.partOfSpeech));
+        if (index >= initialSenseCount) {
+          heading.hidden = !expanded;
+          laterSenses.push(heading);
+        }
+        senses.append(heading);
+      }
+      previousPartOfSpeech = sense.partOfSpeech;
       const row = this.element("div", "lft-sense");
       const meta = this.element("div", "lft-sense-meta");
       const number =
-        sense.number || (entry.senses.length > 1 ? String(index + 1) : "");
+        sense.number ||
+        (!sense.heading && entry.senses.length > 1 ? String(index + 1) : "");
       if (number) {
         meta.append(this.element("span", "lft-sense-number", number));
       }
-      if (sense.partOfSpeech) {
-        meta.append(this.element("span", "lft-pos", sense.partOfSpeech));
-      }
       const body = this.element("div", "lft-sense-content");
+      if (sense.heading && sense.heading !== previousHeading)
+        body.append(this.element("div", "lft-sense-heading", sense.heading));
+      previousHeading = sense.heading || "";
+      if (sense.labels?.length) {
+        const labels = this.element("div", "lft-sense-labels");
+        for (const label of sense.labels)
+          labels.append(this.element("span", "lft-sense-label", label));
+        body.append(labels);
+      }
+      const structured =
+        !!sense.chinese ||
+        !!sense.definition ||
+        !!sense.examples?.length ||
+        !!sense.notes?.length;
+      if (structured) {
+        if (sense.chinese)
+          body.append(
+            this.element(
+              "div",
+              "lft-sense-line lft-definition-translation",
+              sense.chinese,
+            ),
+          );
+        if (sense.definition)
+          body.append(
+            this.element(
+              "div",
+              "lft-sense-line lft-definition-original",
+              sense.definition,
+            ),
+          );
+        for (const value of sense.examples || []) {
+          const example = this.element("div", "lft-example");
+          example.append(
+            this.element("div", "lft-example-original", value.text),
+          );
+          if (value.translation)
+            example.append(
+              this.element("div", "lft-example-translation", value.translation),
+            );
+          body.append(example);
+        }
+        for (const value of sense.notes || []) {
+          const note = this.element("div", "lft-usage-note");
+          note.append(this.element("div", "lft-usage-note-label", "用法说明"));
+          if (value.text)
+            note.append(
+              this.element("div", "lft-usage-note-original", value.text),
+            );
+          if (value.translation)
+            note.append(
+              this.element(
+                "div",
+                "lft-usage-note-translation",
+                value.translation,
+              ),
+            );
+          body.append(note);
+        }
+      }
       const lines =
         sense.lines.length > 0
           ? sense.lines
@@ -364,20 +442,68 @@ export class TranslationCard {
               text,
               kind: "mixed" as const,
             }));
-      for (const line of lines) {
-        body.append(
-          this.element(
-            "div",
-            `lft-sense-line lft-line-${line.kind}`,
-            line.text,
-          ),
-        );
+      for (
+        let lineIndex = 0;
+        !structured && lineIndex < lines.length;
+        lineIndex++
+      ) {
+        const line = lines[lineIndex]!;
+        if (line.kind === "example") {
+          const example = this.element("div", "lft-example");
+          example.append(
+            this.element("div", "lft-example-original", line.text),
+          );
+          const translation = lines[lineIndex + 1];
+          if (translation?.kind === "translation") {
+            example.append(
+              this.element("div", "lft-example-translation", translation.text),
+            );
+            lineIndex++;
+          }
+          body.append(example);
+        } else {
+          const language = /[\u3400-\u9fff]/u.test(line.text)
+            ? "chinese"
+            : "english";
+          body.append(
+            this.element(
+              "div",
+              `lft-sense-line lft-line-${line.kind} lft-line-${language}`,
+              line.text,
+            ),
+          );
+        }
       }
-      if (meta.childElementCount > 0) row.append(meta);
-      row.append(body);
+      if (index >= initialSenseCount) {
+        row.hidden = !expanded;
+        laterSenses.push(row);
+      }
+      row.append(meta, body);
       senses.append(row);
     });
     section.append(senses);
+    if (entry.senses.length > initialSenseCount) {
+      const remaining = entry.senses.length - initialSenseCount;
+      const controls = this.element("div", "lft-sense-expand");
+      let showAll = expanded;
+      const toggle = this.button(
+        showAll ? "收起义项" : `展开其余 ${remaining} 个义项`,
+        () => {
+          showAll = !showAll;
+          for (const element of laterSenses) element.hidden = !showAll;
+          if (showAll) this.expandedDictionarySources.add(entry.source);
+          else this.expandedDictionarySources.delete(entry.source);
+          toggle.textContent = showAll
+            ? "收起义项"
+            : `展开其余 ${remaining} 个义项`;
+          toggle.setAttribute("aria-expanded", String(showAll));
+        },
+      );
+      toggle.className = "lft-sense-expand-button";
+      toggle.setAttribute("aria-expanded", String(showAll));
+      controls.append(toggle);
+      section.append(controls);
+    }
 
     if (entry.tags.length > 0) {
       const tags = this.element("div", "lft-tags");
@@ -477,10 +603,57 @@ export class TranslationCard {
 
   private renderLocalResult(result: LocalLookupResult, loading = false): void {
     this.queryText = result.word;
-    const content = this.element("div");
-    for (const entry of result.entries) {
-      content.append(this.renderDictionary(entry));
+    const content = this.element("div", "lft-local-result");
+    const panels = result.entries.map((entry) => this.renderDictionary(entry));
+    if (this.selectedDictionaryIndex >= panels.length)
+      this.selectedDictionaryIndex = 0;
+    if (panels.length > 1) {
+      const tabs = this.element("div", "lft-dictionary-tabs");
+      tabs.setAttribute("role", "tablist");
+      tabs.setAttribute("aria-label", "词典来源");
+      const buttons: HTMLButtonElement[] = [];
+      const selectTab = (index: number, focus = false) => {
+        this.selectedDictionaryIndex = index;
+        panels.forEach((panel, panelIndex) => {
+          panel.hidden = panelIndex !== index;
+          buttons[panelIndex]!.setAttribute(
+            "aria-selected",
+            String(panelIndex === index),
+          );
+          buttons[panelIndex]!.tabIndex = panelIndex === index ? 0 : -1;
+        });
+        if (focus) buttons[index]!.focus();
+      };
+      result.entries.forEach((entry, index) => {
+        const id = `lft-dictionary-${this.cardID}-${index}`;
+        const tab = this.button(entry.source, () => selectTab(index));
+        tab.className = "lft-dictionary-tab";
+        tab.id = `${id}-tab`;
+        tab.title = entry.source;
+        tab.setAttribute("role", "tab");
+        tab.setAttribute("aria-controls", id);
+        tab.addEventListener("keydown", (event) => {
+          let next = index;
+          if (event.key === "ArrowRight") next = (index + 1) % panels.length;
+          else if (event.key === "ArrowLeft")
+            next = (index + panels.length - 1) % panels.length;
+          else if (event.key === "Home") next = 0;
+          else if (event.key === "End") next = panels.length - 1;
+          else return;
+          event.preventDefault();
+          event.stopPropagation();
+          selectTab(next, true);
+        });
+        panels[index]!.id = id;
+        panels[index]!.setAttribute("role", "tabpanel");
+        panels[index]!.setAttribute("aria-labelledby", tab.id);
+        buttons.push(tab);
+        tabs.append(tab);
+      });
+      selectTab(this.selectedDictionaryIndex);
+      content.append(tabs);
     }
+    content.append(...panels);
     if (loading) {
       content.append(
         this.element(

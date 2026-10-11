@@ -5,6 +5,8 @@ import type {
   WordForm,
 } from "./types";
 import { parsePlainTextSenses, readableDictionaryLines } from "./plain";
+import { parseCollinsDefinition } from "./formats/collins";
+import { parseOxfordDefinition } from "./formats/oxford";
 
 export interface ParsedDefinition {
   pronunciations: Pronunciation[];
@@ -12,6 +14,15 @@ export interface ParsedDefinition {
   forms: WordForm[];
   tags: string[];
   audioReferences: AudioReference[];
+}
+
+function dictionaryDocument(definition: string): Document {
+  // Several MDict exports use XML-style empty spans, which HTML parsers
+  // otherwise keep open and accidentally nest all subsequent meanings.
+  const html = definition
+    .replace(/\u0000/gu, "")
+    .replace(/<span\b([^<>]*?)\/>/giu, "<span$1></span>");
+  return new DOMParser().parseFromString(html, "text/html");
 }
 
 function cleanText(value: string | null | undefined): string {
@@ -198,7 +209,7 @@ function extractStructuredSenses(doc: Document): DictionarySense[] {
 }
 
 export function definitionToPlainText(definition: string): string {
-  const doc = new DOMParser().parseFromString(definition, "text/html");
+  const doc = dictionaryDocument(definition);
   return documentToPlainText(doc);
 }
 
@@ -269,7 +280,7 @@ function extractTags(plain: string): string[] {
 }
 
 export function extractAudioReferences(definition: string): AudioReference[] {
-  const doc = new DOMParser().parseFromString(definition, "text/html");
+  const doc = dictionaryDocument(definition);
   return audioReferencesFromDocument(doc);
 }
 
@@ -311,15 +322,36 @@ function audioReferencesFromDocument(doc: Document): AudioReference[] {
 
 export function parseDefinition(
   definition: string,
-  _headword: string,
+  headword: string,
   options: { includeAudio?: boolean } = {},
 ): ParsedDefinition {
-  const doc = new DOMParser().parseFromString(definition, "text/html");
+  const doc = dictionaryDocument(definition);
   doc
     .querySelectorAll("script, style, noscript, template")
     .forEach((node) => node.remove());
   const audioReferences =
     options.includeAudio === false ? [] : audioReferencesFromDocument(doc);
+  const formatted =
+    parseCollinsDefinition(doc, headword) ||
+    parseOxfordDefinition(doc, headword);
+  if (formatted) {
+    for (const reference of audioReferences) {
+      const pronunciation = formatted.pronunciations?.find(
+        (item) => item.resource === reference.resource,
+      );
+      if (pronunciation) reference.region = pronunciation.region;
+    }
+    const pronunciations =
+      formatted.pronunciations || extractPronunciations(doc);
+    const plain = documentToPlainText(doc);
+    return {
+      senses: formatted.senses,
+      pronunciations,
+      forms: formatted.forms || extractForms(plain),
+      tags: [...new Set([...(formatted.tags || []), ...extractTags(plain)])],
+      audioReferences,
+    };
+  }
   const pronunciations = extractPronunciations(doc);
   const structured = extractStructuredSenses(doc);
   // Extract structured fields first; plain-text conversion mutates the same

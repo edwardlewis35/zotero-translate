@@ -1,0 +1,324 @@
+import assert from "node:assert/strict";
+import { TranslationCard } from "../src/ui/card";
+import type {
+  DictionaryEntry,
+  DictionarySense,
+  LocalLookupOptions,
+  LocalLookupResult,
+} from "../src/dictionary/types";
+import { TestDocument, TestElement } from "./helpers/dom";
+
+const prefs = new Map<string, unknown>([["loadDictionaryAudio", false]]);
+Object.assign(globalThis, {
+  Zotero: {
+    Prefs: {
+      get: (key: string) => prefs.get(key.split(".").at(-1)!),
+      set: (key: string, value: unknown) =>
+        prefs.set(key.split(".").at(-1)!, value),
+    },
+    logError: () => {},
+  },
+});
+
+// These invented entries verify the presentation contract without shipping
+// text copied from a user's licensed dictionary.
+function entry(source: string, senses: DictionarySense[]): DictionaryEntry {
+  return {
+    source,
+    headword: "sample",
+    pronunciations: [
+      { region: "英", text: "/ˈsɑːmpəl/" },
+      { region: "美", text: "/ˈsæmpəl/" },
+    ],
+    forms: [{ label: "复数", value: "samples" }],
+    tags: ["常用词"],
+    audio: [],
+    senses,
+  };
+}
+
+const structured: DictionarySense = {
+  partOfSpeech: "n.",
+  number: "1",
+  chinese: "示范释义",
+  definition: "An invented definition for a display test.",
+  labels: ["可数"],
+  heading: "sample phrase",
+  examples: [
+    {
+      text: "Here is an invented example.",
+      translation: "这里是虚构例句。",
+    },
+  ],
+  notes: [{ text: "A usage detail.", translation: "这是用法提示。" }],
+  translation: "完整批注释义和例句",
+  lines: [
+    { text: "示范释义", kind: "definition" },
+    { text: "An invented definition for a display test.", kind: "definition" },
+    { text: "Here is an invented example.", kind: "example" },
+    { text: "这里是虚构例句。", kind: "translation" },
+    { text: "A usage detail.", kind: "mixed" },
+    { text: "这是用法提示。", kind: "translation" },
+  ],
+};
+const fallback: DictionarySense = {
+  partOfSpeech: "v.",
+  translation: "兼容旧结构",
+  lines: [
+    { text: "兼容旧结构", kind: "definition" },
+    { text: "A fallback example.", kind: "example" },
+    { text: "旧格式例句译文。", kind: "translation" },
+    { text: "<script>literal text</script>", kind: "mixed" },
+  ],
+};
+
+function mount(
+  lookup: (
+    word: string,
+    options?: LocalLookupOptions,
+  ) => Promise<LocalLookupResult>,
+) {
+  const doc = new TestDocument();
+  const saved: string[] = [];
+  const played: string[] = [];
+  const createElement = doc.createElement.bind(doc);
+  doc.createElement = (tag: string) => {
+    const element = createElement(tag);
+    if (tag === "audio")
+      Object.assign(element, {
+        src: "",
+        play: async () =>
+          played.push((element as TestElement & { src: string }).src),
+      });
+    return element;
+  };
+  const instance = new TranslationCard(
+    doc as never,
+    "sample",
+    true,
+    { lookup } as never,
+    () => {},
+    async (text) => {
+      saved.push(text);
+    },
+  );
+  const root = instance.root as unknown as TestElement;
+  doc.documentElement.append(root);
+  return { instance, root, saved, played };
+}
+
+const result: LocalLookupResult = {
+  word: "sample",
+  entries: [entry("示例甲词典", [structured]), entry("示例乙词典", [fallback])],
+  errors: [],
+  configuredDictionaries: 2,
+};
+const display = mount(async () => result);
+await display.instance.lookupLocal();
+const panels = display.root.querySelectorAll(".lft-dictionary");
+const tabs = display.root.querySelectorAll(".lft-dictionary-tab");
+assert.equal(panels.length, 2);
+assert.deepEqual(
+  panels.map((panel) => panel.hidden),
+  [false, true],
+);
+assert.equal(tabs[0]!.getAttribute("aria-selected"), "true");
+assert.equal(tabs[1]!.getAttribute("aria-selected"), "false");
+assert.equal(panels[0]!.getAttribute("aria-labelledby"), tabs[0]!.id);
+assert.equal(tabs[0]!.getAttribute("aria-controls"), panels[0]!.id);
+
+const first = panels[0]!;
+const content = first.querySelector(".lft-sense-content")!;
+const main = content.querySelector(".lft-definition-translation")!;
+const original = content.querySelector(".lft-definition-original")!;
+assert.ok(content.children.indexOf(main) < content.children.indexOf(original));
+assert.equal(first.querySelectorAll(".lft-example").length, 1);
+assert.equal(first.querySelectorAll(".lft-example-original").length, 1);
+assert.equal(
+  first.querySelector(".lft-example-translation")!.textContent,
+  "这里是虚构例句。",
+);
+assert.equal(first.querySelector(".lft-sense-label")!.textContent, "可数");
+assert.equal(
+  first.querySelector(".lft-sense-heading")!.textContent,
+  "sample phrase",
+);
+assert.equal(
+  first.textContent.split("示范释义").length - 1,
+  1,
+  "structured fields must not repeat the legacy lines",
+);
+assert.equal(first.querySelector(".lft-sense-number")!.textContent, "1");
+assert.equal(first.querySelectorAll(".lft-pronunciation").length, 2);
+assert.equal(first.querySelector(".lft-audio"), null);
+assert.equal(
+  first.querySelector(".lft-usage-note-translation")!.textContent,
+  "这是用法提示。",
+);
+assert.equal(first.textContent.split("这是用法提示。").length - 1, 1);
+
+tabs[1]!.click();
+assert.deepEqual(
+  panels.map((panel) => panel.hidden),
+  [true, false],
+);
+assert.equal(tabs[1]!.getAttribute("aria-selected"), "true");
+assert.equal(
+  panels[1]!.querySelector(".lft-example")!.textContent,
+  "A fallback example.旧格式例句译文。",
+);
+assert.ok(panels[1]!.textContent.includes("<script>literal text</script>"));
+assert.equal(panels[1]!.querySelector("script"), null);
+const home = new Event("keydown", { cancelable: true });
+Object.assign(home, { key: "Home" });
+tabs[1]!.dispatchEvent(home);
+assert.deepEqual(
+  panels.map((panel) => panel.hidden),
+  [false, true],
+);
+
+display.root
+  .querySelectorAll("button")
+  .find((button) => button.textContent === "写入批注")!
+  .click();
+await new Promise((resolve) => setTimeout(resolve, 0));
+assert.ok(display.saved[0]!.includes("示例甲词典"));
+assert.ok(display.saved[0]!.includes("示例乙词典"));
+assert.ok(display.saved[0]!.includes("旧格式例句译文。"));
+assert.ok(display.saved[0]!.includes("这是用法提示。"));
+
+// A user can read every sense of a long entry. Expansion and the active source
+// survive the redraw when the remaining dictionary lookup finishes.
+const longEntry = entry(
+  "长词条示例词典",
+  Array.from({ length: 9 }, (_, index) => ({
+    ...structured,
+    number: String(index + 1),
+    chinese: `示范义项 ${index + 1}`,
+    partOfSpeech: index < 6 ? "n." : "v.",
+  })),
+);
+const partial = { ...result, entries: [result.entries[0]!, longEntry] };
+let finish!: (value: LocalLookupResult) => void;
+const waiting = new Promise<LocalLookupResult>((resolve) => {
+  finish = resolve;
+});
+const progressive = mount(async (_word, options) => {
+  options?.onProgress?.({
+    result: partial,
+    completed: 2,
+    total: 3,
+    message: "等待第三部词典",
+  });
+  return waiting;
+});
+const query = progressive.instance.lookupLocal();
+progressive.root.querySelectorAll(".lft-dictionary-tab")[1]!.click();
+let longPanel = progressive.root.querySelectorAll(".lft-dictionary")[1]!;
+assert.equal(
+  longPanel.querySelectorAll(".lft-sense").filter((sense) => !sense.hidden)
+    .length,
+  6,
+);
+assert.equal(longPanel.querySelectorAll(".lft-pos-heading")[1]!.hidden, true);
+longPanel.querySelector(".lft-sense-expand-button")!.click();
+assert.ok(
+  longPanel.querySelectorAll(".lft-sense").every((sense) => !sense.hidden),
+);
+assert.equal(longPanel.querySelectorAll(".lft-pos-heading")[1]!.hidden, false);
+finish({
+  ...partial,
+  entries: [...partial.entries, entry("示例丙词典", [fallback])],
+});
+await query;
+const finalPanels = progressive.root.querySelectorAll(".lft-dictionary");
+assert.deepEqual(
+  finalPanels.map((panel) => panel.hidden),
+  [true, false, true],
+);
+longPanel = finalPanels[1]!;
+assert.ok(
+  longPanel.querySelectorAll(".lft-sense").every((sense) => !sense.hidden),
+);
+longPanel.querySelector(".lft-sense-expand-button")!.click();
+assert.equal(
+  longPanel.querySelectorAll(".lft-sense").filter((sense) => !sense.hidden)
+    .length,
+  6,
+);
+
+// Several pronunciations may share a region. A known MDD resource key must
+// never borrow a different recording when its own resource is unavailable.
+prefs.set("loadDictionaryAudio", true);
+const audioLoads: string[] = [];
+const preciseAudioEntry: DictionaryEntry = {
+  ...entry("准确发音映射示例", [structured]),
+  pronunciations: [
+    { region: "英", text: "/ˈluːmən/", resource: "first.mp3" },
+    { region: "英", text: "/luːˈmən/", resource: "second.mp3" },
+    { region: "英", text: "/ˈlʊmən/", resource: "missing.mp3" },
+  ],
+  // Reverse asset order so index/region fallback cannot accidentally pass.
+  audio: ["second.mp3", "first.mp3"].map((resource) => ({
+    resource,
+    region: "英",
+    label: resource,
+    load: async () => {
+      audioLoads.push(resource);
+      return `mock:${resource}`;
+    },
+  })),
+};
+const preciseAudio = mount(async () => ({
+  ...result,
+  entries: [preciseAudioEntry],
+  configuredDictionaries: 1,
+}));
+await preciseAudio.instance.lookupLocal();
+const precisePronunciations =
+  preciseAudio.root.querySelectorAll(".lft-pronunciation");
+assert.equal(precisePronunciations.length, 3);
+assert.equal(preciseAudio.root.querySelectorAll(".lft-audio").length, 2);
+assert.equal(precisePronunciations[2]!.querySelector(".lft-audio"), null);
+assert.deepEqual(audioLoads, []);
+precisePronunciations[0]!.querySelector(".lft-audio")!.click();
+await new Promise((resolve) => setTimeout(resolve, 0));
+precisePronunciations[1]!.querySelector(".lft-audio")!.click();
+await new Promise((resolve) => setTimeout(resolve, 0));
+assert.deepEqual(audioLoads, ["first.mp3", "second.mp3"]);
+assert.deepEqual(preciseAudio.played, ["mock:first.mp3", "mock:second.mp3"]);
+
+// Older entries without resource keys still support region and index matching.
+const legacyAudio = mount(async () => ({
+  ...result,
+  configuredDictionaries: 1,
+  entries: [
+    {
+      ...entry("旧格式发音示例", [structured]),
+      pronunciations: [
+        { region: "英", text: "/ˈsɑːmpəl/" },
+        { region: "未知地区", text: "/ˈsæmpəl/" },
+      ],
+      audio: [
+        { region: "英", label: "英音", url: "mock:legacy-region" },
+        { region: "美", label: "美音", url: "mock:legacy-index" },
+      ],
+    },
+  ],
+}));
+await legacyAudio.instance.lookupLocal();
+const legacyButtons = legacyAudio.root.querySelectorAll(".lft-audio");
+assert.equal(legacyButtons.length, 2);
+legacyButtons[0]!.click();
+await new Promise((resolve) => setTimeout(resolve, 0));
+legacyButtons[1]!.click();
+await new Promise((resolve) => setTimeout(resolve, 0));
+assert.deepEqual(legacyAudio.played, [
+  "mock:legacy-region",
+  "mock:legacy-index",
+]);
+prefs.set("loadDictionaryAudio", false);
+
+console.log(
+  "dictionary display: semantic text hierarchy, paired examples, source tabs and full long entries passed (mock DOM)",
+);

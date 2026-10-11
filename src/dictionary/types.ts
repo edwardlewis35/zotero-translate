@@ -1,6 +1,7 @@
 export interface Pronunciation {
   region: string;
   text: string;
+  resource?: string;
 }
 
 export type DictionaryLineKind =
@@ -11,11 +12,29 @@ export interface DictionarySenseLine {
   kind: DictionaryLineKind;
 }
 
+export interface DictionaryExample {
+  text: string;
+  translation?: string;
+}
+
 export interface DictionarySense {
   partOfSpeech: string;
   translation: string;
   number?: string;
   lines: DictionarySenseLine[];
+  chinese?: string;
+  definition?: string;
+  examples?: DictionaryExample[];
+  notes?: DictionaryExample[];
+  labels?: string[];
+  heading?: string;
+}
+
+export interface StructuredDictionaryDefinition {
+  senses: DictionarySense[];
+  pronunciations?: Pronunciation[];
+  forms?: WordForm[];
+  tags?: string[];
 }
 
 export interface WordForm {
@@ -26,6 +45,7 @@ export interface WordForm {
 export interface AudioAsset {
   label: string;
   region: string;
+  resource?: string;
   url?: string;
   load?: () => Promise<string>;
 }

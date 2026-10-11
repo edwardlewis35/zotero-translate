@@ -55,6 +55,7 @@ class FixtureDOMParser {
     return {
       body: { textContent },
       documentElement: { textContent },
+      querySelector: () => null,
       querySelectorAll: (selector: string) => {
         if (selector === "[href], [src]")
           return href ? [element("英", href)] : [];

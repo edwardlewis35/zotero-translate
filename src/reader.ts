@@ -5,6 +5,7 @@ import {
 } from "./annotation";
 import type { LocalDictionaryService } from "./dictionary/service";
 import { TranslationCard } from "./ui/card";
+import { watchSelectionPopupLayout } from "./ui/popup-layout";
 
 export function isSingleWord(text: string): boolean {
   const normalized = text
@@ -22,6 +23,7 @@ export class ReaderIntegration {
   private readonly handler: _ZoteroTypes.Reader.EventHandler<"renderTextSelectionPopup">;
   private registered = false;
   private active = false;
+  private readonly popupLayouts = new Set<() => void>();
 
   constructor(
     private readonly dictionaries: LocalDictionaryService,
@@ -60,23 +62,20 @@ export class ReaderIntegration {
               ).then(() => undefined)
           : undefined,
       );
-      this.integrateWithSelectionPopup(event.doc);
       event.append(card.root);
+      try {
+        const disposeLayout = watchSelectionPopupLayout(
+          event.doc,
+          card.root,
+          (dispose) => this.popupLayouts.delete(dispose),
+        );
+        this.popupLayouts.add(disposeLayout);
+      } catch (error) {
+        // Optional layout integration must never prevent lookup/translation.
+        Zotero.logError(error as Error);
+      }
       card.start();
     };
-  }
-
-  private integrateWithSelectionPopup(doc: Document): void {
-    const popup = doc.querySelector<HTMLElement>(".selection-popup");
-    if (!popup) return;
-    popup.classList.add("lft-selection-popup");
-    popup.style.maxWidth = "none";
-
-    const colors = popup.querySelector<HTMLElement>(".colors");
-    if (colors) {
-      colors.style.width = "100%";
-      colors.style.justifyContent = "space-evenly";
-    }
   }
 
   register(): void {
@@ -93,6 +92,8 @@ export class ReaderIntegration {
 
   unregister(): void {
     this.active = false;
+    for (const dispose of this.popupLayouts) dispose();
+    this.popupLayouts.clear();
     // Zotero removes listeners by pluginID when the plugin shuts down.
     // Its Zotero 9 unregisterEventListener() can remove other plugins' listeners,
     // so deactivate immediately and leave removal to the host's lifecycle.

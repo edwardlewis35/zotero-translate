@@ -1,6 +1,6 @@
 {
   "name": "zotero9-dict-translator",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "type": "module",
   "private": true,
   "description": "A Zotero 9+ PDF translation plugin with multiple local MDX/MDD dictionaries and an OpenAI-compatible fallback.",
@@ -37,6 +37,7 @@
   "devDependencies": {
     "@types/node": "^22.16.5",
     "@types/pako": "^2.0.4",
+    "linkedom": "0.18.13",
     "prettier": "^3.7.4",
     "typescript": "^5.9.3",
     "zotero-plugin-scaffold": "^0.8.2",

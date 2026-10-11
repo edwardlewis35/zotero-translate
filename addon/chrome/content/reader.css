@@ -3,24 +3,63 @@
   box-sizing: border-box;
 }
 
-.selection-popup.lft-selection-popup {
+/* React rewrites the host popup's classes during positioning. Match the card
+   structurally; the marker branch also supports hosts without :has(). */
+.selection-popup:is(.lft-selection-popup, :has(.lft-card)) {
+  box-sizing: border-box;
   width: min(660px, calc(100vw - 28px)) !important;
   max-width: none !important;
-  flex-wrap: wrap !important;
-  overflow: hidden !important;
+  max-height: min(
+    700px,
+    var(--lft-popup-max-height, calc(100vh - 28px))
+  ) !important;
+  flex-wrap: nowrap !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
 }
 
-.selection-popup.lft-selection-popup .colors {
+.selection-popup:is(.lft-selection-popup, :has(.lft-card)) > * {
+  flex-shrink: 0;
+}
+
+.selection-popup:is(.lft-selection-popup, :has(.lft-card)) .custom-sections {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.selection-popup:is(.lft-selection-popup, :has(.lft-card))
+  .custom-sections
+  > .section {
+  flex-shrink: 0;
+}
+
+.selection-popup:is(.lft-selection-popup, :has(.lft-card))
+  .custom-sections
+  > .section:is(.lft-popup-section, :has(.lft-card)) {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+}
+
+.selection-popup:is(.lft-selection-popup, :has(.lft-card)) .colors {
   width: 100% !important;
-  flex: 1 1 100% !important;
+  flex: 0 0 auto !important;
   justify-content: space-evenly !important;
 }
 
-.selection-popup.lft-selection-popup > .lft-card,
-.selection-popup.lft-selection-popup .lft-card {
+.selection-popup:is(.lft-selection-popup, :has(.lft-card)) > .lft-card,
+.selection-popup:is(.lft-selection-popup, :has(.lft-card)) .lft-card {
   width: 100% !important;
   max-width: 100% !important;
-  flex: 1 1 100% !important;
+  max-height: 610px;
+  min-height: 0;
+  flex: 1 1 auto !important;
   border: 0 !important;
   border-top: 1px solid var(--lft-border) !important;
   border-radius: 0 0 12px 12px !important;
@@ -322,26 +361,87 @@
 }
 
 .lft-dictionary {
-  padding: 0 0 12px;
+  padding: 0 0 16px;
 }
 
-.lft-dictionary + .lft-dictionary {
-  border-top: 7px solid color-mix(in srgb, var(--lft-border) 42%, transparent);
+.lft-usage-note {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  color: var(--lft-text-2);
+  background: var(--lft-surface-2);
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.lft-usage-note-label {
+  margin-bottom: 4px;
+  color: var(--lft-text-3);
+  font-size: 11px;
+}
+
+.lft-usage-note-translation {
+  margin-top: 4px;
+}
+
+.lft-dictionary[hidden],
+.lft-sense[hidden],
+.lft-pos-heading[hidden] {
+  display: none !important;
+}
+
+.lft-dictionary-tabs {
+  display: flex;
+  gap: 18px;
+  overflow: auto;
+  padding: 0 18px;
+  border-bottom: 1px solid var(--lft-border);
+  background: var(--lft-surface);
+  scrollbar-width: thin;
+}
+
+.lft-dictionary-tab {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 280px;
+  overflow: hidden;
+  padding: 12px 0 10px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: var(--lft-text-2);
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.lft-dictionary-tab[aria-selected="true"] {
+  border-bottom-color: var(--lft-accent);
+  color: var(--lft-accent);
+  font-weight: 650;
+}
+
+.lft-dictionary-tab:hover {
+  color: var(--lft-accent);
+}
+
+.lft-dictionary-tab:focus-visible,
+.lft-audio:focus-visible {
+  outline: 2px solid var(--lft-accent);
+  outline-offset: 3px;
 }
 
 .lft-dictionary-header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
-  padding: 15px 17px 13px;
+  gap: 14px;
+  padding: 19px 20px 16px;
   border-bottom: 1px solid
-    color-mix(in srgb, var(--lft-border) 72%, transparent);
-  background: linear-gradient(
-    135deg,
-    color-mix(in srgb, var(--lft-accent) 7%, var(--lft-surface)),
-    var(--lft-surface)
-  );
+    color-mix(in srgb, var(--lft-border) 65%, transparent);
 }
 
 .lft-dictionary-identity {
@@ -349,22 +449,21 @@
 }
 
 .lft-dictionary-headword {
-  margin-bottom: 4px;
-  font-family: ui-serif, Georgia, "Times New Roman", serif;
-  font-size: 23px;
-  font-weight: 720;
-  line-height: 1.2;
+  margin-bottom: 8px;
+  font-size: 27px;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1.18;
+  overflow-wrap: anywhere;
 }
 
 .lft-dictionary-name {
   flex: 0 1 auto;
   overflow: hidden;
   max-width: 42%;
-  padding: 3px 8px;
-  border: 1px solid var(--lft-border);
-  border-radius: 999px;
-  color: var(--lft-text-2);
-  background: var(--lft-surface);
+  margin-top: 5px;
+  padding: 0;
+  color: var(--lft-text-3);
   font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -374,7 +473,7 @@
   display: flex;
   flex: 1 1 auto;
   flex-wrap: wrap;
-  gap: 6px 14px;
+  gap: 7px 17px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -383,20 +482,19 @@
 .lft-pronunciation {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   color: var(--lft-text-2);
+  font-size: 13px;
 }
 
 .lft-pron-region {
-  padding: 1px 4px;
-  border-radius: 4px;
-  color: var(--lft-accent);
-  background: var(--lft-accent-soft);
-  font-size: 11px;
+  color: var(--lft-text-3);
+  font-size: 12px;
 }
 
 .lft-pron-text {
-  font-family: "Charis SIL", "Noto Sans", sans-serif;
+  font-family: "Charis SIL", "Noto Sans", "Arial Unicode MS", sans-serif;
+  overflow-wrap: anywhere;
 }
 
 .lft-pron-audio-label {
@@ -406,8 +504,9 @@
 
 .lft-audio {
   display: grid;
-  width: 23px;
-  height: 23px;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
   padding: 0;
   place-items: center;
   border: 0;
@@ -425,47 +524,47 @@
 
 .lft-senses {
   display: grid;
-  gap: 10px;
-  padding: 13px 15px 3px;
+  gap: 0;
+  padding: 8px 20px 0;
+}
+
+.lft-pos-heading {
+  margin: 13px 0 3px;
 }
 
 .lft-sense {
   display: grid;
-  grid-template-columns: minmax(38px, auto) minmax(0, 1fr);
+  grid-template-columns: 22px minmax(0, 1fr);
   align-items: start;
-  gap: 10px;
-  padding: 11px 12px;
-  border: 1px solid color-mix(in srgb, var(--lft-border) 78%, transparent);
-  border-radius: 10px;
-  background: var(--lft-surface-2);
+  gap: 8px;
+  padding: 10px 0;
+}
+
+.lft-sense + .lft-sense {
+  border-top: 1px solid color-mix(in srgb, var(--lft-border) 50%, transparent);
 }
 
 .lft-sense-meta {
   display: flex;
-  min-width: 38px;
+  min-width: 0;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 5px;
+  align-items: flex-end;
+  padding-top: 1px;
 }
 
 .lft-sense-number {
-  display: grid;
-  width: 23px;
-  height: 23px;
-  place-items: center;
-  border-radius: 50%;
-  color: #fff;
-  background: var(--lft-accent);
-  font-size: 11px;
-  font-weight: 700;
+  color: var(--lft-text-3);
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.8;
 }
 
 .lft-pos {
-  padding: 1px 6px 2px;
-  border-radius: 5px;
-  color: var(--lft-accent);
-  background: var(--lft-accent-soft);
+  padding: 0;
+  color: var(--lft-text-2);
   font-family: ui-serif, Georgia, serif;
+  font-size: 14px;
   font-style: italic;
   font-weight: 600;
 }
@@ -473,36 +572,97 @@
 .lft-sense-content {
   display: grid;
   min-width: 0;
-  gap: 7px;
+  gap: 5px;
 }
 
 .lft-sense-line {
-  padding: 0 2px;
+  margin: 0;
   line-height: 1.68;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
 
-.lft-line-definition {
+.lft-definition-translation,
+.lft-line-chinese.lft-line-definition,
+.lft-line-chinese.lft-line-translation {
   color: var(--lft-text);
+  font-size: 14px;
   font-weight: 600;
 }
 
-.lft-line-example {
-  padding: 7px 9px;
-  border-left: 2px solid color-mix(in srgb, var(--lft-accent) 38%, transparent);
-  border-radius: 0 7px 7px 0;
+.lft-definition-original,
+.lft-line-english {
   color: var(--lft-text-2);
-  background: color-mix(in srgb, var(--lft-border) 24%, transparent);
-  font-family: ui-serif, Georgia, "Times New Roman", serif;
+  font-size: 13px;
+  line-height: 1.65;
 }
 
-.lft-line-translation {
+.lft-sense-heading {
   color: var(--lft-text);
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.lft-sense-labels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 9px;
+}
+
+.lft-sense-label {
+  color: var(--lft-text-3);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.lft-example {
+  display: grid;
+  gap: 2px;
+  margin: 4px 0 1px;
+  padding: 2px 0 2px 11px;
+  border-left: 2px solid color-mix(in srgb, var(--lft-border) 85%, transparent);
+  font-size: 13px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.lft-example-original {
+  color: var(--lft-text-2);
+}
+
+.lft-example-translation {
+  color: var(--lft-text-2);
+  font-size: 12px;
+}
+
+.lft-sense-expand {
+  margin: 10px 20px 0 50px;
+}
+
+.lft-sense-expand-button {
+  padding: 5px 0;
+  border: 0;
+  color: var(--lft-accent);
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.lft-sense-expand-button:hover {
+  text-decoration: underline;
+}
+
+.lft-sense-expand-button:focus-visible {
+  outline: 2px solid var(--lft-accent);
+  outline-offset: 3px;
 }
 
 .lft-line-mixed {
-  color: var(--lft-text-2);
+  color: var(--lft-text);
 }
 
 .lft-tags,
@@ -510,29 +670,28 @@
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin: 12px 16px 0;
+  margin: 14px 20px 0;
 }
 
 .lft-tag {
-  padding: 2px 7px;
-  border-radius: 999px;
-  color: var(--lft-text-2);
-  background: color-mix(in srgb, var(--lft-border) 45%, transparent);
-  font-size: 10px;
+  padding: 1px 6px;
+  border: 1px solid color-mix(in srgb, var(--lft-border) 75%, transparent);
+  border-radius: 4px;
+  color: var(--lft-text-3);
+  font-size: 11px;
 }
 
 .lft-form {
   display: inline-flex;
   overflow: hidden;
-  border: 1px solid var(--lft-border);
-  border-radius: 6px;
-  font-size: 11px;
+  border-radius: 4px;
+  background: var(--lft-surface-2);
+  font-size: 12px;
 }
 
 .lft-form-label {
   padding: 2px 6px;
-  color: var(--lft-text-3);
-  background: color-mix(in srgb, var(--lft-border) 35%, transparent);
+  color: var(--lft-text-2);
 }
 
 .lft-form-value {
@@ -541,7 +700,7 @@
 }
 
 .lft-source {
-  margin: 12px 16px 0;
+  margin: 16px 20px 0;
   color: var(--lft-text-3);
   font-size: 10px;
   text-align: right;
@@ -651,6 +810,11 @@
 
 @media (prefers-color-scheme: dark) {
   .lft-card {
+    --lft-text: var(--fill-primary, #e8eaef);
+    --lft-text-2: var(--fill-secondary, #b4b8c4);
+    --lft-text-3: var(--fill-tertiary, #999ead);
+    --lft-border: var(--material-border, #3d424e);
+    --lft-surface: var(--material-background, #22252b);
     --lft-accent: #8e9dff;
     --lft-accent-soft: rgb(142 157 255 / 14%);
     box-shadow:
@@ -678,11 +842,26 @@
     width: min(210px, 58vw);
   }
 
-  .lft-sense {
-    grid-template-columns: 1fr;
+  .lft-dictionary-header {
+    padding: 17px 15px 14px;
+    gap: 9px;
   }
 
-  .lft-sense-meta {
-    flex-direction: row;
+  .lft-dictionary-headword {
+    font-size: 25px;
+  }
+
+  .lft-senses {
+    padding-inline: 15px;
+  }
+
+  .lft-dictionary-tabs {
+    gap: 14px;
+    padding-inline: 15px;
+  }
+
+  .lft-sense {
+    grid-template-columns: 20px minmax(0, 1fr);
+    gap: 6px;
   }
 }
