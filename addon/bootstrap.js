@@ -26,6 +26,10 @@ async function startup({ resourceURI, rootURI }, reason) {
     IOUtils,
     PathUtils,
     ChromeUtils,
+    URL,
+    DOMParser,
+    TextDecoder,
+    TextEncoder,
   };
   context._globalThis = context;
 

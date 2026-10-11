@@ -20,6 +20,8 @@ export function isSingleWord(text: string): boolean {
 
 export class ReaderIntegration {
   private readonly handler: _ZoteroTypes.Reader.EventHandler<"renderTextSelectionPopup">;
+  private registered = false;
+  private active = false;
 
   constructor(
     private readonly dictionaries: LocalDictionaryService,
@@ -27,6 +29,7 @@ export class ReaderIntegration {
     private readonly pluginID: string,
   ) {
     this.handler = (event) => {
+      if (!this.active) return;
       const text = String(event.params.annotation.text || "").trim();
       if (!text) return;
       const attachmentItemID = event.reader.itemID;
@@ -77,17 +80,21 @@ export class ReaderIntegration {
   }
 
   register(): void {
-    Zotero.Reader.registerEventListener(
-      "renderTextSelectionPopup",
-      this.handler,
-      this.pluginID,
-    );
+    if (!this.registered) {
+      Zotero.Reader.registerEventListener(
+        "renderTextSelectionPopup",
+        this.handler,
+        this.pluginID,
+      );
+      this.registered = true;
+    }
+    this.active = true;
   }
 
   unregister(): void {
-    Zotero.Reader.unregisterEventListener(
-      "renderTextSelectionPopup",
-      this.handler,
-    );
+    this.active = false;
+    // Zotero removes listeners by pluginID when the plugin shuts down.
+    // Its Zotero 9 unregisterEventListener() can remove other plugins' listeners,
+    // so deactivate immediately and leave removal to the host's lifecycle.
   }
 }

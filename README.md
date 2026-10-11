@@ -1,6 +1,6 @@
-# LexiFlow 词典翻译（Zotero 9）
+# LexiFlow 词典翻译（Zotero 9+）
 
-一个从零实现的 Zotero 9 PDF 选词翻译插件：
+一个从零实现的 Zotero 9+ PDF 选词翻译插件：
 
 - 单词优先查询本机的多部 MDX/MDD 词典；
 - 可将 MDX/MDD 一键复制到 Zotero 数据目录中的插件专用文件夹；
@@ -17,10 +17,12 @@
 
 ## 运行要求
 
-- Zotero 9.x（兼容清单范围为 9.0 到 9.0.*）
+- Zotero 9.0 及更新版本（兼容清单最低版本为 `9.0`，最高版本为 `*`；XPI 与自动更新清单使用相同范围）
 - 从源码构建时需要 Node.js 22.8 或更新版本
 
 插件本身是纯 JavaScript，生成的 XPI 与 x86_64/ARM64 架构无关。
+
+本次 0.3.3 适配通过了 10 个回归测试套件，并在 Zotero 10.0.6 的独立测试资料库中完成实际安装、设置页加载、MDX 查词、PDF 原生选词弹窗、翻译下划线批注以及停用/重新启用验证。Zotero 9 的接口和停用监听器兼容性已做源码及回归检查，未另行运行 Zotero 9 客户端；后续尚未发布的版本仍需重新验证。PDF 弹窗检查通过真实 PDF 字符坐标和原生阅读器事件触发，未覆盖鼠标拖选交互。
 
 ## 安装
 
@@ -101,7 +103,10 @@ http://127.0.0.1:8000/v1/chat/completions
 npm install
 npm test
 npm run build
+npm run verify:package
 ```
+
+`verify:package` 会核对 XPI 与 `update.json` 的版本、Zotero 9+ 兼容范围、下载地址、完整资源和 SHA-512，避免安装包允许新版本而自动更新清单仍锁定在 9.x。
 
 构建产物位于 build/。如果 Node 18 报 node:util 没有 styleText，请升级到 Node 22：
 
@@ -114,8 +119,8 @@ nvm use 22
 
 仓库包含两个 GitHub Actions 工作流：
 
-- `build.yml`：向任意分支推送、创建 Pull Request 或手动运行时，执行格式检查、TypeScript 检查和 XPI 构建，并上传构建产物；
-- `release.yml`：推送形如 `v0.3.2` 的标签时，校验标签与 `package.json` 版本一致，构建正式 XPI，生成源码 ZIP、`update.json` 和 SHA-256 校验文件，然后创建 GitHub Release。
+- `build.yml`：向任意分支推送、创建 Pull Request 或手动运行时，执行格式检查、回归测试、TypeScript 检查和 XPI 构建及兼容性校验，并上传构建产物；
+- `release.yml`：推送形如 `v0.3.3` 的标签时，校验标签与 `package.json` 版本一致，构建正式 XPI，生成源码 ZIP、`update.json` 和 SHA-256 校验文件，然后创建 GitHub Release。
 
 首次发布：
 
@@ -123,8 +128,8 @@ nvm use 22
 git add .
 git commit -m "chore: add GitHub build and release workflows"
 git push
-git tag v0.3.2
-git push origin v0.3.2
+git tag v0.3.3
+git push origin v0.3.3
 ```
 
 发布工作流使用仓库自带的 `GITHUB_TOKEN`，并已声明 `contents: write`，通常不需要配置额外 Secret。如果组织策略强制工作流只读，需要由仓库管理员允许 GitHub Actions 写入 Releases。
@@ -137,7 +142,7 @@ https://github.com/edwardlewis35/zotero-translate/releases/latest/download/updat
 
 如果需要让 Zotero 在未登录 GitHub 的情况下自动更新，仓库及 Release 必须公开；私有仓库仍可运行构建和发布，但 Zotero 无法匿名下载更新文件。
 
-以后发布新版本时，先同步修改 `package.json` 与 `package-lock.json` 中的版本，再推送同名 `v<版本>` 标签。带连字符的版本（例如 `0.3.2-beta.1`）会自动发布为 GitHub Pre-release。
+以后发布新版本时，先同步修改 `package.json` 与 `package-lock.json` 中的版本，再推送同名 `v<版本>` 标签。带连字符的版本（例如 `0.3.3-beta.1`）会自动发布为 GitHub Pre-release。
 
 ## 项目结构
 

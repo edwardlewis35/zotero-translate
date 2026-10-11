@@ -58,6 +58,9 @@ jobs:
       - name: Check formatting
         run: npm run lint
 
+      - name: Run regression tests
+        run: npm test
+
       - name: Build release XPI
         run: npm run build
 
@@ -73,42 +76,7 @@ jobs:
           source_zip="build/lexiflow-zotero9-translator-${VERSION}-source.zip"
           checksums="build/SHA256SUMS.txt"
 
-          test -f "${xpi}"
-          test -f "${update_json}"
-          unzip -t "${xpi}"
-          unzip -p "${xpi}" manifest.json \
-            | node -e '
-                let input = "";
-                process.stdin.on("data", (chunk) => (input += chunk));
-                process.stdin.on("end", () => {
-                  const manifest = JSON.parse(input);
-                  const expectedUpdateURL = `https://github.com/${process.env.GITHUB_REPOSITORY}/releases/latest/download/update.json`;
-                  const actualUpdateURL = manifest.applications?.zotero?.update_url;
-                  if (manifest.version !== process.env.VERSION) {
-                    throw new Error(
-                      `manifest version ${manifest.version} does not match ${process.env.VERSION}`,
-                    );
-                  }
-                  if (actualUpdateURL !== expectedUpdateURL) {
-                    throw new Error(
-                      `unexpected update URL ${actualUpdateURL}; expected ${expectedUpdateURL}`,
-                    );
-                  }
-                });
-              '
-          node -e '
-            const update = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
-            const addon = update.addons?.["lexiflow-dict-translator@example.com"];
-            const candidate = addon?.updates?.find(
-              (item) => item.version === process.env.VERSION,
-            );
-            const expectedLink = `https://github.com/${process.env.GITHUB_REPOSITORY}/releases/download/v${process.env.VERSION}/lexiflow-zotero9-translator.xpi`;
-            if (candidate?.update_link !== expectedLink) {
-              throw new Error(
-                `unexpected XPI update link ${candidate?.update_link}; expected ${expectedLink}`,
-              );
-            }
-          ' "${update_json}"
+          npm run verify:package
           git archive \
             --format=zip \
             --prefix="lexiflow-zotero9-translator-${VERSION}/" \

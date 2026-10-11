@@ -1,9 +1,9 @@
 {
   "name": "zotero9-dict-translator",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "type": "module",
   "private": true,
-  "description": "A Zotero 9 PDF translation plugin with multiple local MDX/MDD dictionaries and an OpenAI-compatible fallback.",
+  "description": "A Zotero 9+ PDF translation plugin with multiple local MDX/MDD dictionaries and an OpenAI-compatible fallback.",
   "config": {
     "addonName": "LexiFlow 词典翻译",
     "addonID": "lexiflow-dict-translator@example.com",
@@ -17,7 +17,8 @@
     "build": "tsc --noEmit && zotero-plugin build",
     "test": "node scripts/run-tests.mjs",
     "lint": "prettier --check .",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "verify:package": "node scripts/verify-package.mjs"
   },
   "engines": {
     "node": ">=22.8.0"

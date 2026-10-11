@@ -34,42 +34,14 @@ jobs:
       - name: Check formatting
         run: npm run lint
 
+      - name: Run regression tests
+        run: npm test
+
       - name: Build plugin
         run: npm run build
 
       - name: Verify package contents
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -f build/lexiflow-zotero9-translator.xpi
-          test -f build/update.json
-          unzip -t build/lexiflow-zotero9-translator.xpi
-          unzip -p build/lexiflow-zotero9-translator.xpi manifest.json \
-            | node -e '
-                let input = "";
-                process.stdin.on("data", (chunk) => (input += chunk));
-                process.stdin.on("end", () => {
-                  const manifest = JSON.parse(input);
-                  const zotero = manifest.applications?.zotero;
-                  if (!zotero?.update_url) {
-                    throw new Error("applications.zotero.update_url is missing");
-                  }
-                  const expectedUpdateURL = `https://github.com/${process.env.GITHUB_REPOSITORY}/releases/latest/download/update.json`;
-                  if (zotero.update_url !== expectedUpdateURL) {
-                    throw new Error(
-                      `unexpected update URL ${zotero.update_url}; expected ${expectedUpdateURL}`,
-                    );
-                  }
-                  const packageVersion = JSON.parse(
-                    require("fs").readFileSync("package.json", "utf8"),
-                  ).version;
-                  if (manifest.version !== packageVersion) {
-                    throw new Error(
-                      `manifest version ${manifest.version} does not match package version ${packageVersion}`,
-                    );
-                  }
-                });
-              '
+        run: npm run verify:package
 
       - name: Upload XPI artifact
         uses: actions/upload-artifact@v7
