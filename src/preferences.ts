@@ -1,4 +1,5 @@
 import { PREFERENCE_PANE_ID } from "./config";
+import { DEFAULT_API_BASE_URL } from "./api-endpoint";
 import {
   discoverSiblingMDDPaths,
   groupDictionaryPaths,
@@ -280,7 +281,8 @@ export class PreferencesController {
     return {
       id: createConfigID("model"),
       name: `模型 ${index}`,
-      endpoint: "https://api.openai.com/v1/chat/completions",
+      endpoint: DEFAULT_API_BASE_URL,
+      protocol: "responses",
       apiKey: "",
       model: "",
       temperature: "0.2",
@@ -419,16 +421,43 @@ export class PreferencesController {
       header.append(title, headerActions);
 
       const fields = this.html(doc, "div", "lft-profile-grid");
+      const protocolField = this.html(doc, "label", "lft-profile-field");
+      protocolField.append(
+        this.html(doc, "span", "lft-profile-label", "API 协议"),
+      );
+      const protocol = this.html(
+        doc,
+        "select",
+        "lft-profile-input lft-api-protocol",
+      );
+      for (const [value, label] of [
+        ["responses", "Responses API"],
+        ["chat-completions", "Chat Completions（兼容）"],
+      ]) {
+        const option = this.html(doc, "option", "", label);
+        option.value = value;
+        protocol.append(option);
+      }
+      protocol.value = profile.protocol || "responses";
+      protocol.addEventListener("change", () => {
+        profile.protocol =
+          protocol.value === "chat-completions"
+            ? "chat-completions"
+            : "responses";
+        saveAPIProfiles(this.apiProfiles);
+      });
+      protocolField.append(protocol);
       fields.append(
         this.profileField(doc, profile, "name", "配置名称", {
           placeholder: "例如：OpenAI、DeepSeek、本地模型",
         }),
         this.profileField(doc, profile, "model", "模型名称", {
-          placeholder: "例如：gpt-4o-mini",
+          placeholder: "填写服务支持的模型名称",
         }),
-        this.profileField(doc, profile, "endpoint", "接口地址", {
+        protocolField,
+        this.profileField(doc, profile, "endpoint", "Base URL", {
           type: "url",
-          placeholder: "https://api.example.com/v1/chat/completions",
+          placeholder: DEFAULT_API_BASE_URL,
           wide: true,
         }),
         this.profileField(doc, profile, "apiKey", "API Key", {

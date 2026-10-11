@@ -85,6 +85,12 @@
       </html:div>
       <html:div id="lft-api-profile-list" class="lft-config-list"></html:div>
       <html:p class="lft-pref-hint">
+        默认使用 Responses API，Base URL 自动补齐 /responses；选择 Chat
+        Completions 时自动补齐
+        /chat/completions。也兼容完整接口地址。译文会实时显示。
+        请填写当前服务支持的模型名称和对应 API Key。
+      </html:p>
+      <html:p class="lft-pref-hint">
         支持提示词变量：<html:code>${sourceText}</html:code>、
         <html:code>${targetLanguage}</html:code>。API Key 仅保存在本机 Zotero
         首选项中。

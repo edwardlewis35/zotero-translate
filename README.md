@@ -6,7 +6,7 @@
 - 可将 MDX/MDD 一键复制到 Zotero 数据目录中的插件专用文件夹；
 - 本地未命中时只显示“使用大模型翻译”按钮，不会静默产生 API 费用；
 - 本地未命中时可以直接编辑单词原形并重新查询；
-- 句子和段落使用 OpenAI-compatible Chat Completions 接口，译文按内容块实时显示；
+- 句子和段落默认使用 Responses API，译文按内容块实时显示，也可选择 Chat Completions 兼容协议；
 - 可保存多个 API/模型配置，并在每次翻译时从选词卡片选择；
 - 每个 API 的提示词、接口地址、API Key、模型、目标语言和 Temperature 均可配置；
 - 译文按段落或句子分行，词典结果按“发音、词性释义、标签、词形、来源”显示；
@@ -23,6 +23,8 @@
 插件本身是纯 JavaScript，生成的 XPI 与 x86_64/ARM64 架构无关。
 
 本次 0.3.3 适配通过了 10 个回归测试套件，并在 Zotero 10.0.6 的独立测试资料库中完成实际安装、设置页加载、MDX 查词、PDF 原生选词弹窗、翻译下划线批注以及停用/重新启用验证。Zotero 9 的接口和停用监听器兼容性已做源码及回归检查，未另行运行 Zotero 9 客户端；后续尚未发布的版本仍需重新验证。PDF 弹窗检查通过真实 PDF 字符坐标和原生阅读器事件触发，未覆盖鼠标拖选交互。
+
+0.3.4 的 Responses API 修改通过 12 个回归套件，并在 Zotero 10.0.6 中通过 11 项安装包验证，包括真实 PDF Reader 卡片逐帧显示、完成去重、停止、失败和截断处理、协议选择与 Chat 兼容。上游使用本机无密钥模拟 SSE 服务，未验证千问账号权限或实际模型推理。
 
 ## 安装
 
@@ -65,30 +67,29 @@ MDX 按词典分别缓存，索引按块建立并让出界面线程，不再反�
 
 ## 配置 OpenAI-compatible API
 
-设置页的“＋ 添加 API”可保存多个 OpenAI-compatible 服务。每个服务独立保存名称、接口、API Key、模型、目标语言、Temperature 和提示词；选词卡片顶部的“模型”下拉框决定本次翻译使用哪个配置。
+设置页的“＋ 添加 API”可保存多个 OpenAI-compatible 服务。每个服务独立保存名称、Base URL、API 协议、API Key、模型、目标语言、Temperature 和提示词；选词卡片顶部的“模型”下拉框决定本次翻译使用哪个配置。模型名称需填写当前服务和账号支持的模型，插件不会自动选择模型。
 
-插件实现标准流式 Chat Completions 请求：
+新配置默认使用 Responses API，并预填千问 Token Plan 的 Base URL：
 
 ```http
-POST /v1/chat/completions
+POST /compatible-mode/v1/responses
 Content-Type: application/json
 Authorization: Bearer YOUR_KEY
 ```
 
-请求体包含 model、messages、temperature 和 `stream: true`，实时解析 SSE 内容块：
+请求体包含 `model`、`input`、`temperature`、`stream: true` 和 `store: false`。按 SSE 事件 `response.output_text.delta` 实时追加译文，完成快照去重；思考过程和工具事件不会混入译文。`response.completed` 确认完成，失败、未完成、拒绝和流中断会显示错误，不会将截断译文当作翻译成功。
+
+Base URL 只需填写到版本路径，插件会自动补齐 `/responses`，例如：
 
 ```text
-choices[0].delta.content
+https://token-plan.maas.qianwenaiapi.com/compatible-mode/v1
+https://api.openai.com/v1
+http://127.0.0.1:8000/v1
 ```
 
-接口地址必须填写完整路径，例如：
+完整 `/responses` 或 `/chat/completions` 地址也可填写，不会重复追加后缀。旧配置中的完整 Chat Completions 地址会自动保留该协议；如需迁移，修改其“API 协议”为 Responses API 即可。仅支持 Chat Completions 的服务可选择兼容协议，此时自动补齐 `/chat/completions`，请求使用 `messages` 并解析 `choices[0].delta.content`。
 
-```text
-https://api.openai.com/v1/chat/completions
-http://127.0.0.1:8000/v1/chat/completions
-```
-
-本地兼容服务不需要鉴权时，API Key 可以留空。提示词支持两个变量：
+千问 Token Plan 的 Key 必须搭配 Token Plan 域名，插件不会自动切换到按量付费地址。接口格式依据 [千问 Token Plan 文档](https://platform.qianwenai.com/docs/token-plan/team/token-plan-team-quickstart)和 [OpenAI Responses 流式事件文档](https://developers.openai.com/api/docs/guides/streaming-responses)。本地兼容服务不需要鉴权时，API Key 可以留空。提示词支持两个变量：
 
 - ${sourceText}：当前选中的文本
 - ${targetLanguage}：设置的目标语言
@@ -120,7 +121,7 @@ nvm use 22
 仓库包含两个 GitHub Actions 工作流：
 
 - `build.yml`：向任意分支推送、创建 Pull Request 或手动运行时，执行格式检查、回归测试、TypeScript 检查和 XPI 构建及兼容性校验，并上传构建产物；
-- `release.yml`：推送形如 `v0.3.3` 的标签时，校验标签与 `package.json` 版本一致，构建正式 XPI，生成源码 ZIP、`update.json` 和 SHA-256 校验文件，然后创建 GitHub Release。
+- `release.yml`：推送形如 `v0.3.4` 的标签时，校验标签与 `package.json` 版本一致，构建正式 XPI，生成源码 ZIP、`update.json` 和 SHA-256 校验文件，然后创建 GitHub Release。
 
 首次发布：
 
@@ -128,8 +129,8 @@ nvm use 22
 git add .
 git commit -m "chore: add GitHub build and release workflows"
 git push
-git tag v0.3.3
-git push origin v0.3.3
+git tag v0.3.4
+git push origin v0.3.4
 ```
 
 发布工作流使用仓库自带的 `GITHUB_TOKEN`，并已声明 `contents: write`，通常不需要配置额外 Secret。如果组织策略强制工作流只读，需要由仓库管理员允许 GitHub Actions 写入 Releases。
@@ -153,7 +154,8 @@ src/reader.ts                  PDF 选词事件
 src/ui/card.ts                 翻译卡片渲染
 src/annotation.ts              创建下划线并写入翻译批注
 src/dictionary/               MDX/MDD 导入、加载、结构化解析与缓存
-src/openai.ts                  OpenAI-compatible Chat Completions
+src/api-endpoint.ts            Base URL 与 API 协议
+src/openai.ts                  Responses / Chat Completions 流式翻译
 src/preferences.ts             Zotero 设置页逻辑
 src/shims/                     js-mdict 的 Zotero 文件与解压适配层
 .github/workflows/build.yml    GitHub 持续集成构建

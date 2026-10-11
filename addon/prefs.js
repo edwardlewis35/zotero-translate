@@ -7,10 +7,10 @@ pref("__prefsPrefix__.apiProfiles", "");
 pref("__prefsPrefix__.selectedApiProfileId", "default-openai");
 pref(
   "__prefsPrefix__.openaiEndpoint",
-  "https://api.openai.com/v1/chat/completions",
+  "https://token-plan.maas.qianwenaiapi.com/compatible-mode/v1",
 );
 pref("__prefsPrefix__.openaiApiKey", "");
-pref("__prefsPrefix__.openaiModel", "gpt-4o-mini");
+pref("__prefsPrefix__.openaiModel", "");
 pref("__prefsPrefix__.openaiTemperature", "0.2");
 pref("__prefsPrefix__.targetLanguage", "简体中文");
 pref(

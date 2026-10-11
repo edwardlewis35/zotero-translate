@@ -1,5 +1,10 @@
 import { config } from "./config";
 import {
+  DEFAULT_API_BASE_URL,
+  inferAPIProtocol,
+  type APIProtocol,
+} from "./api-endpoint";
+import {
   groupDictionaryPaths,
   parseDictionaryPaths,
   pathParts,
@@ -17,6 +22,7 @@ export interface APIProfile {
   id: string;
   name: string;
   endpoint: string;
+  protocol?: APIProtocol;
   apiKey: string;
   model: string;
   temperature: string;
@@ -58,9 +64,9 @@ const defaults: PluginSettings = {
   dictionaryConfigs: "",
   apiProfiles: "",
   selectedApiProfileId: DEFAULT_API_PROFILE_ID,
-  openaiEndpoint: "https://api.openai.com/v1/chat/completions",
+  openaiEndpoint: DEFAULT_API_BASE_URL,
   openaiApiKey: "",
-  openaiModel: "gpt-4o-mini",
+  openaiModel: "",
   openaiTemperature: "0.2",
   targetLanguage: "简体中文",
   openaiPrompt: DEFAULT_PROMPT,
@@ -180,12 +186,26 @@ export function saveDictionaryConfigs(configs: DictionaryConfig[]): void {
 }
 
 function legacyAPIProfile(settings: PluginSettings): APIProfile {
+  // A legacy user may have saved only a key/model and relied on the old OpenAI
+  // default URL. Keep that provider instead of sending the saved key to the
+  // new default provider after an upgrade. An explicitly saved URL wins.
+  const hasUserEndpoint =
+    typeof Services !== "undefined" &&
+    Services.prefs.prefHasUserValue(fullKey("openaiEndpoint"));
+  const usesOldDefault =
+    settings.openaiEndpoint === DEFAULT_API_BASE_URL &&
+    !hasUserEndpoint &&
+    !!(settings.openaiApiKey.trim() || settings.openaiModel.trim());
+  const endpoint = usesOldDefault
+    ? "https://api.openai.com/v1/chat/completions"
+    : settings.openaiEndpoint;
   return {
     id: DEFAULT_API_PROFILE_ID,
-    name: "OpenAI",
-    endpoint: settings.openaiEndpoint,
+    name: "默认 API",
+    endpoint,
+    protocol: inferAPIProtocol(endpoint),
     apiKey: settings.openaiApiKey,
-    model: settings.openaiModel,
+    model: settings.openaiModel || (usesOldDefault ? "gpt-4o-mini" : ""),
     temperature: settings.openaiTemperature,
     targetLanguage: settings.targetLanguage,
     prompt: settings.openaiPrompt || DEFAULT_PROMPT,
@@ -201,6 +221,10 @@ function normalizeAPIProfile(value: unknown, index: number): APIProfile | null {
     id,
     name: stringValue(input.name).trim() || model || `模型 ${index + 1}`,
     endpoint: stringValue(input.endpoint).trim(),
+    protocol:
+      input.protocol === "responses" || input.protocol === "chat-completions"
+        ? input.protocol
+        : inferAPIProtocol(stringValue(input.endpoint)),
     apiKey: stringValue(input.apiKey),
     model,
     temperature: stringValue(input.temperature, "0.2"),
