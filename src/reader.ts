@@ -18,8 +18,60 @@ interface ReaderWindowState {
   panel?: FloatingTranslationWindow;
   position?: FloatingPosition;
   selectionKey?: string;
+  gesture?: {
+    doc: Document;
+    initial?: ReaderSelectionState;
+    changed: boolean;
+    selecting: boolean;
+    pointer?: { id: number; x: number; y: number };
+  };
   refreshDocuments: () => void;
   cleanup: (() => void)[];
+}
+
+interface ReaderSelectionState {
+  anchorNode: Node | null;
+  anchorOffset: number;
+  focusNode: Node | null;
+  focusOffset: number;
+  text: string;
+  collapsed: boolean;
+}
+
+function selectionText(text: string): string {
+  return text.replace(/\s+/gu, " ").trim();
+}
+
+function readSelection(doc: Document): ReaderSelectionState | undefined {
+  try {
+    const selection = doc.getSelection?.();
+    if (!selection) return undefined;
+    return {
+      anchorNode: selection.anchorNode,
+      anchorOffset: selection.anchorOffset,
+      focusNode: selection.focusNode,
+      focusOffset: selection.focusOffset,
+      text: selectionText(selection.toString()),
+      collapsed: selection.isCollapsed,
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function sameSelection(
+  first: ReaderSelectionState | undefined,
+  second: ReaderSelectionState | undefined,
+): boolean {
+  if (!first || !second) return first === second;
+  return (
+    first.anchorNode === second.anchorNode &&
+    first.anchorOffset === second.anchorOffset &&
+    first.focusNode === second.focusNode &&
+    first.focusOffset === second.focusOffset &&
+    first.text === second.text &&
+    first.collapsed === second.collapsed
+  );
 }
 
 export class ReaderIntegration {
@@ -53,7 +105,21 @@ export class ReaderIntegration {
         selection?.sortIndex,
       ]);
       // Native redraws must neither restart a request nor reopen a closed panel.
-      if (state.selectionKey === key) return;
+      if (state.selectionKey === key) {
+        const gesture = state.gesture;
+        const current = gesture && readSelection(gesture.doc);
+        if (
+          !gesture ||
+          (!gesture.selecting &&
+            (!gesture.changed ||
+              !current ||
+              current.collapsed ||
+              !current.text ||
+              current.text !== selectionText(text)))
+        )
+          return;
+      }
+      state.gesture = undefined;
       state.selectionKey = key;
       try {
         const panel =
@@ -74,9 +140,8 @@ export class ReaderIntegration {
                 ).then(() => undefined)
             : undefined,
           () => {
-            state.position = panel.position;
-            panel.dispose();
-            state.panel = undefined;
+            state.gesture = undefined;
+            this.closePanel(state);
           },
         );
         panel.show(card);
@@ -106,13 +171,9 @@ export class ReaderIntegration {
     this.windows.set(doc, state);
     const seen = new WeakSet<Document>();
     const seenFrames = new WeakSet<HTMLIFrameElement>();
-    const allowReselection = (event: Event) => {
+    const selectionGesture = (current: Document, event: Event) => {
       const target = event.target as Element | null;
-      if (
-        target?.closest?.(".lft-floating-window, .selection-popup") ||
-        (event as PointerEvent).button > 0
-      )
-        return;
+      if (target?.closest?.(".lft-floating-window")) return;
       if (event.type === "keydown") {
         const key = event as KeyboardEvent;
         if (
@@ -123,20 +184,83 @@ export class ReaderIntegration {
           !((key.ctrlKey || key.metaKey) && key.key.toLowerCase() === "a")
         )
           return;
+      } else {
+        const pointer = event as PointerEvent;
+        if (pointer.button !== 0 || pointer.isPrimary === false) return;
+        // Closing preserves the key so an old native popup redraw cannot
+        // immediately reopen the dismissed card. Touch uses this same path.
+        this.closePanel(state);
       }
       // PDF iframe pointer events do not bubble into the Reader document.
-      // A fresh gesture permits reopening the same word after closing it.
-      state.selectionKey = undefined;
+      // Reopening the identical selection additionally requires evidence that
+      // this gesture changed the native text selection, not just a click.
+      state.gesture = {
+        doc: current,
+        initial: readSelection(current),
+        changed: false,
+        selecting: event.type === "keydown",
+        pointer:
+          event.type === "pointerdown" &&
+          target?.closest?.(".page, .textLayer, #viewerContainer")
+            ? {
+                id: (event as PointerEvent).pointerId,
+                x: (event as PointerEvent).clientX,
+                y: (event as PointerEvent).clientY,
+              }
+            : undefined,
+      };
     };
     const bindDocument = (current: Document) => {
       if (!seen.has(current)) {
         seen.add(current);
+        const startGesture = (event: Event) => selectionGesture(current, event);
+        const selectionPointer = (event: Event) => {
+          const gesture = state.gesture;
+          if (gesture?.doc !== current || !gesture.pointer) return;
+          if (event.type === "mousedown") {
+            const mouse = event as MouseEvent;
+            if (mouse.button === 0 && mouse.detail >= 2)
+              gesture.selecting = true;
+          } else {
+            const pointer = event as PointerEvent;
+            if (
+              pointer.pointerId === gesture.pointer.id &&
+              (pointer.buttons & 1) !== 0 &&
+              Math.hypot(
+                pointer.clientX - gesture.pointer.x,
+                pointer.clientY - gesture.pointer.y,
+              ) >= 3
+            )
+              gesture.selecting = true;
+          }
+        };
+        const selectionChanged = () => {
+          const gesture = state.gesture;
+          if (
+            gesture?.doc === current &&
+            !sameSelection(gesture.initial, readSelection(current))
+          )
+            gesture.changed = true;
+        };
         for (const type of ["pointerdown", "keydown"]) {
-          current.addEventListener(type, allowReselection, true);
+          current.addEventListener(type, startGesture, true);
           state.cleanup.push(() =>
-            current.removeEventListener(type, allowReselection, true),
+            current.removeEventListener(type, startGesture, true),
           );
         }
+        // Desktop PDF selections use Zotero's own ranges instead of a DOM
+        // Selection. Recognize actual drag/double-click selection gestures;
+        // a plain outside click never unlocks a previously dismissed key.
+        for (const type of ["pointermove", "mousedown"]) {
+          current.addEventListener(type, selectionPointer, true);
+          state.cleanup.push(() =>
+            current.removeEventListener(type, selectionPointer, true),
+          );
+        }
+        current.addEventListener("selectionchange", selectionChanged);
+        state.cleanup.push(() =>
+          current.removeEventListener("selectionchange", selectionChanged),
+        );
       }
       for (const frame of Array.from(
         current.querySelectorAll("iframe"),
@@ -168,9 +292,17 @@ export class ReaderIntegration {
     return state;
   }
 
-  private disposeWindow(state: ReaderWindowState): void {
-    state.panel?.dispose();
+  private closePanel(state: ReaderWindowState): void {
+    const panel = state.panel;
+    if (!panel) return;
+    state.position = panel.position;
+    panel.dispose();
     state.panel = undefined;
+  }
+
+  private disposeWindow(state: ReaderWindowState): void {
+    this.closePanel(state);
+    state.gesture = undefined;
     for (const cleanup of state.cleanup.splice(0)) cleanup();
     this.windows.delete(state.doc);
   }

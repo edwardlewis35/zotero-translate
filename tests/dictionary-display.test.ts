@@ -77,6 +77,7 @@ function mount(
     word: string,
     options?: LocalLookupOptions,
   ) => Promise<LocalLookupResult>,
+  selection = "sample",
 ) {
   const doc = new TestDocument();
   const saved: string[] = [];
@@ -94,7 +95,7 @@ function mount(
   };
   const instance = new TranslationCard(
     doc as never,
-    "sample",
+    selection,
     true,
     { lookup } as never,
     () => {},
@@ -241,6 +242,164 @@ assert.ok(display.saved[0]!.includes("示例甲词典"));
 assert.ok(display.saved[0]!.includes("示例乙词典"));
 assert.ok(display.saved[0]!.includes("旧格式例句译文。"));
 assert.ok(display.saved[0]!.includes("这是用法提示。"));
+
+// Highlight the query and actual dictionary forms in semantic body text. The
+// rendered marks must preserve the original case/text and canonical annotation.
+const highlightedSense: DictionarySense = {
+  number: "1",
+  partOfSpeech: "n.",
+  heading: "BANK usage: banker",
+  chinese: "这里的 BANK 指虚构释义。",
+  definition:
+    "A bank banks funds; a banker passed <img src=x onerror=alert(1)>.",
+  examples: [
+    {
+      text: "She banked a coin beside river bank.",
+      translation: "她在 bank 旁放了一枚虚构硬币。",
+    },
+  ],
+  notes: [
+    {
+      text: "BANKING is an invented form here; banker stays unchanged.",
+      translation: "这里只高亮 bank 和真实词形。",
+    },
+  ],
+  translation: "虚构的完整释义。",
+  lines: [],
+};
+highlightedSense.lines = [
+  { text: highlightedSense.chinese!, kind: "definition" },
+  { text: highlightedSense.definition!, kind: "definition" },
+  { text: highlightedSense.examples![0]!.text, kind: "example" },
+  { text: highlightedSense.examples![0]!.translation!, kind: "translation" },
+  { text: highlightedSense.notes![0]!.text!, kind: "mixed" },
+  { text: highlightedSense.notes![0]!.translation!, kind: "translation" },
+];
+const highlightedFallback: DictionarySense = {
+  number: "2",
+  partOfSpeech: "v.",
+  translation: "虚构的旧格式释义。",
+  lines: [
+    { text: "<script>bank</script> and banker.", kind: "mixed" },
+    { text: "A BANK fallback.", kind: "example" },
+    { text: "这是 bank 的旧格式例句。", kind: "translation" },
+  ],
+};
+const highlightedEntry: DictionaryEntry = {
+  ...entry("bank 演示词典", [highlightedSense, highlightedFallback]),
+  headword: "Bank",
+  pronunciations: [],
+  forms: [
+    { label: "复数", value: "banks" },
+    { label: "过去式", value: "banked" },
+    { label: "现在分词", value: "banking" },
+    { label: "短语", value: "river bank" },
+  ],
+  tags: ["bank"],
+};
+const highlighted = mount(
+  async () => ({
+    word: "bank",
+    configuredDictionaries: 1,
+    errors: [],
+    entries: [highlightedEntry],
+  }),
+  "bank",
+);
+await highlighted.instance.lookupLocal();
+const highlightedBody = highlighted.root.querySelector(".lft-dictionary")!;
+const highlightedFirstSense = highlightedBody.querySelector(".lft-sense")!;
+const semanticHighlights: [string, string, string[]][] = [
+  [".lft-sense-heading", highlightedSense.heading!, ["BANK"]],
+  [".lft-definition-translation", highlightedSense.chinese!, ["BANK"]],
+  [".lft-definition-original", highlightedSense.definition!, ["bank", "banks"]],
+  [
+    ".lft-example-original",
+    highlightedSense.examples![0]!.text,
+    ["banked", "bank"],
+  ],
+  [
+    ".lft-example-translation",
+    highlightedSense.examples![0]!.translation!,
+    ["bank"],
+  ],
+  [".lft-usage-note-original", highlightedSense.notes![0]!.text!, ["BANKING"]],
+  [
+    ".lft-usage-note-translation",
+    highlightedSense.notes![0]!.translation!,
+    ["bank"],
+  ],
+];
+for (const [selector, text, matches] of semanticHighlights) {
+  const node = highlightedFirstSense.querySelector(selector)!;
+  assert.equal(node.textContent, text, `${selector} keeps its original text`);
+  assert.deepEqual(
+    node.querySelectorAll(".lft-query-word").map((mark) => mark.textContent),
+    matches,
+    `${selector} highlights only whole query words and real forms`,
+  );
+}
+assert.deepEqual(
+  highlightedBody.querySelectorAll(".lft-form-value").map((form) => ({
+    text: form.textContent,
+    matches: form
+      .querySelectorAll(".lft-query-word")
+      .map((mark) => mark.textContent),
+  })),
+  [
+    { text: "banks", matches: ["banks"] },
+    { text: "banked", matches: ["banked"] },
+    { text: "banking", matches: ["banking"] },
+    { text: "river bank", matches: ["bank"] },
+  ],
+  "a multiword form does not turn the unrelated word river into a match",
+);
+const highlightedLegacySense =
+  highlightedBody.querySelectorAll(".lft-sense")[1]!;
+assert.equal(
+  highlightedLegacySense.querySelector(".lft-sense-line")!.textContent,
+  highlightedFallback.lines[0]!.text,
+);
+assert.deepEqual(
+  highlightedLegacySense
+    .querySelectorAll(".lft-query-word")
+    .map((mark) => mark.textContent),
+  ["bank", "BANK", "bank"],
+);
+const dictionaryMarks = highlightedBody.querySelectorAll(".lft-query-word");
+assert.ok(dictionaryMarks.length > 0);
+assert.ok(dictionaryMarks.every((mark) => mark.tagName === "mark"));
+assert.ok(
+  dictionaryMarks.every(
+    (mark) => !["banker", "river"].includes(mark.textContent),
+  ),
+);
+assert.equal(highlightedBody.querySelector("img"), null);
+assert.equal(highlightedBody.querySelector("script"), null);
+for (const selector of [
+  ".lft-card-header",
+  ".lft-entry-header",
+  ".lft-dictionary-tabs",
+  ".lft-source",
+  ".lft-tag",
+])
+  assert.equal(
+    highlighted.root.querySelector(selector)!.querySelector(".lft-query-word"),
+    null,
+  );
+highlighted.root.querySelector(".lft-button-annotation")!.click();
+await new Promise((resolve) => setTimeout(resolve, 0));
+assert.equal(
+  highlighted.saved[0],
+  [
+    "Bank · bank 演示词典",
+    `1 n. ${highlightedSense.lines.map((line) => line.text).join("\n")}`,
+    `2 v. ${highlightedFallback.lines.map((line) => line.text).join("\n")}`,
+  ].join("\n"),
+  "annotation uses original canonical text, including literal HTML, without rendered marks",
+);
+assert.ok(!highlighted.saved[0]!.includes("<mark"));
+assert.ok(!highlighted.saved[0]!.includes("lft-query-word"));
 
 // A user can read every sense of a long entry. Expansion and the active source
 // survive the redraw when the remaining dictionary lookup finishes.
@@ -440,5 +599,5 @@ assert.deepEqual(legacyAudio.played, [
 prefs.set("loadDictionaryAudio", false);
 
 console.log(
-  "dictionary display: semantic text hierarchy, paired examples, source tabs and full long entries passed (mock DOM)",
+  "dictionary display: semantic text hierarchy, safe query/form highlights, canonical annotations, source tabs and full long entries passed (mock DOM)",
 );

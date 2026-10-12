@@ -15,6 +15,7 @@ import {
 } from "../prefs";
 
 import { isSingleWord, normalizeSelectedWord } from "../selection";
+import { splitQueryHighlights } from "./highlight";
 
 const STYLE_ID = "lexiflowdicttranslator-reader-style";
 let nextCardID = 0;
@@ -43,7 +44,13 @@ function translationLines(text: string): string[] {
 }
 
 export function ensureReaderStyles(doc: Document): void {
-  if (doc.getElementById(STYLE_ID)) return;
+  const existing = doc.getElementById(STYLE_ID);
+  if (existing) {
+    // A plugin update can leave Reader documents open with the old stylesheet.
+    if (existing.textContent !== readerStyles)
+      existing.textContent = readerStyles;
+    return;
+  }
   const style = doc.createElement("style");
   style.id = STYLE_ID;
   style.textContent = readerStyles;
@@ -581,6 +588,20 @@ export class TranslationCard {
     section.append(
       this.element("div", "lft-source", `来自 ${entry.source} 本地词典`),
     );
+    const words = [
+      this.queryText,
+      entry.headword,
+      ...entry.forms.map((form) => form.value),
+    ];
+    for (const node of section.querySelectorAll(
+      ".lft-sense-line, .lft-example-original, .lft-example-translation, .lft-usage-note-original, .lft-usage-note-translation, .lft-sense-heading, .lft-form-value",
+    )) {
+      const element = node as HTMLElement | null;
+      if (!element) continue;
+      const text = element.textContent || "";
+      element.textContent = "";
+      this.appendQueryText(element, text, words);
+    }
     return section;
   }
 
@@ -876,6 +897,21 @@ export class TranslationCard {
     );
   }
 
+  private appendQueryText(
+    parent: HTMLElement,
+    text: string,
+    words = [this.queryText],
+  ): void {
+    for (const part of splitQueryHighlights(text, words))
+      parent.append(
+        this.element(
+          part.highlighted ? "mark" : "span",
+          part.highlighted ? "lft-query-word" : "",
+          part.text,
+        ),
+      );
+  }
+
   private appendInlineText(parent: HTMLElement, text: string): void {
     // A small inert Markdown subset improves dictionary explanations without
     // letting provider output create links, HTML, images or executable content.
@@ -884,17 +920,17 @@ export class TranslationCard {
     let offset = 0;
     for (const match of text.matchAll(pattern)) {
       if (match.index > offset)
-        parent.append(
-          this.element("span", "", text.slice(offset, match.index)),
-        );
+        this.appendQueryText(parent, text.slice(offset, match.index));
       const tag = match[3] ? "code" : match[4] ? "em" : "strong";
-      parent.append(
-        this.element(tag, "", match[1] || match[2] || match[3] || match[4]),
+      const formatted = this.element(tag);
+      this.appendQueryText(
+        formatted,
+        match[1] || match[2] || match[3] || match[4]!,
       );
+      parent.append(formatted);
       offset = match.index + match[0].length;
     }
-    if (offset < text.length)
-      parent.append(this.element("span", "", text.slice(offset)));
+    if (offset < text.length) this.appendQueryText(parent, text.slice(offset));
   }
 
   private renderTranslationText(text: string): HTMLElement {
@@ -1017,7 +1053,8 @@ export class TranslationCard {
       if (requestID !== this.requestID || !this.root.isConnected) return;
       if (progress.text) {
         output.classList.remove("is-waiting");
-        output.textContent = progress.text;
+        output.replaceChildren();
+        this.appendQueryText(output, progress.text);
         count.textContent = `${progress.text.length} 字符 · 接收中`;
         modelLabel.textContent = `${progress.profileName} · ${progress.model}`;
         const scrollArea =

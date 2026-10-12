@@ -766,6 +766,16 @@
   white-space: pre-wrap;
 }
 
+/* Highlight the queried word without changing copy or annotation text. */
+.lft-query-word {
+  padding: 0 1px;
+  border-radius: 2px;
+  color: var(--lft-accent);
+  background: var(--lft-accent-soft);
+  font: inherit;
+  font-weight: 600;
+}
+
 .lft-translation-lines strong {
   color: var(--lft-text);
   font-weight: 500;

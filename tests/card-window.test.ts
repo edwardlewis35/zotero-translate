@@ -22,6 +22,7 @@ const prefs = new Map<string, unknown>([
   ["apiProfiles", JSON.stringify([profile])],
   ["selectedApiProfileId", profile.id],
 ]);
+const copied: string[] = [];
 let handleRequest: (options: RequestOptions) => Promise<Response>;
 type Response = { status: number; responseText: string };
 type RequestOptions = {
@@ -38,6 +39,9 @@ Object.assign(globalThis, {
     HTTP: {
       request: (_method: string, _url: string, options: RequestOptions) =>
         handleRequest(options),
+    },
+    Utilities: {
+      Internal: { copyTextToClipboard: (text: string) => copied.push(text) },
     },
     logError: () => {},
   },
@@ -230,6 +234,78 @@ assert.ok(
   explanation.root.textContent.includes("<img src=x onerror=alert(1)>"),
 );
 
+// Query highlighting wraps inert Markdown text, including inline emphasis and
+// code, without changing provider text used for annotations or copying.
+const highlightedProviderText = [
+  "## bank",
+  "### BANK usage",
+  "A bank and a banker; banked is not a supplied form.",
+  "**BANK** *bank* `bank`.",
+  "<img src=x onerror=alert(1)> bank <script>bank</script>",
+].join("\n");
+handleRequest = async () => ({
+  status: 200,
+  responseText: JSON.stringify({
+    status: "completed",
+    output_text: highlightedProviderText,
+  }),
+});
+const highlighted = mount(async () => local, "bank");
+await highlighted.card.translateOnline();
+const highlightedLines = highlighted.root.querySelector(
+  ".lft-translation-lines",
+)!;
+assert.deepEqual(
+  highlightedLines
+    .querySelectorAll("p")
+    .map((paragraph) => paragraph.textContent),
+  [
+    "A bank and a banker; banked is not a supplied form.",
+    "BANK bank bank.",
+    "<img src=x onerror=alert(1)> bank <script>bank</script>",
+  ],
+  "highlighting preserves the plain text of Markdown and literal HTML",
+);
+assert.equal(highlightedLines.querySelector("h3")!.textContent, "BANK usage");
+for (const [tag, text] of [
+  ["strong", "BANK"],
+  ["em", "bank"],
+  ["code", "bank"],
+]) {
+  const inline = highlightedLines.querySelector(tag!)!;
+  assert.equal(inline.textContent, text);
+  assert.equal(inline.querySelector(".lft-query-word")!.textContent, text);
+}
+const providerMarks = highlightedLines.querySelectorAll(".lft-query-word");
+assert.deepEqual(
+  providerMarks.map((mark) => mark.textContent),
+  ["BANK", "bank", "BANK", "bank", "bank", "bank", "bank"],
+  "banker and an unsupplied inflection banked remain unmarked",
+);
+assert.ok(providerMarks.every((mark) => mark.tagName === "mark"));
+assert.equal(highlightedLines.querySelector("img"), null);
+assert.equal(highlightedLines.querySelector("script"), null);
+for (const selector of [
+  ".lft-card-header",
+  ".lft-dictionary-header",
+  ".lft-dictionary-tabs",
+  ".lft-footer",
+])
+  assert.equal(
+    highlighted.root.querySelector(selector)!.querySelector(".lft-query-word"),
+    null,
+  );
+highlighted.root.querySelector(".lft-button-annotation")!.click();
+await new Promise((resolve) => setTimeout(resolve, 0));
+assert.equal(highlighted.saved[0], highlightedProviderText);
+assert.ok(!highlighted.saved[0]!.includes("<mark"));
+assert.ok(!highlighted.saved[0]!.includes("lft-query-word"));
+highlighted.root
+  .querySelectorAll("button")
+  .find((button) => button.textContent === "复制")!
+  .click();
+assert.equal(copied.at(-1), highlightedProviderText);
+
 // Deduplication is deliberately narrow: inflections, phonetics, longer
 // headings and later repeated headings are provider content, not duplicates.
 for (const heading of [
@@ -324,6 +400,18 @@ completedStream.onprogress?.();
 assert.equal(toolbar(completed.root).disabled, true);
 assert.equal(completed.root.querySelector("h3"), null);
 assert.equal(completed.root.querySelector("img"), null);
+assert.equal(
+  completed.root.querySelector(".lft-translation-stream")!.textContent,
+  "## sample\n1. **n.** 示例\n- A sample example.\n- 示例句子。\n<img src=x>",
+  "live highlights preserve the exact accumulated provider text",
+);
+assert.deepEqual(
+  completed.root
+    .querySelector(".lft-translation-stream")!
+    .querySelectorAll(".lft-query-word")
+    .map((mark) => mark.textContent),
+  ["sample", "sample"],
+);
 completedStream.responseText +=
   'data: {"type":"response.completed","response":{"status":"completed","output_text":"## sample\\n1. **n.** 示例\\n- A sample example.\\n- 示例句子。\\n<img src=x>"}}\n\n';
 completedRequest.resolve(completedStream);
@@ -339,6 +427,89 @@ assert.equal(completed.root.querySelectorAll("strong").length, 1);
 assert.equal(completed.root.querySelectorAll("li").length, 3);
 assert.equal(completed.root.querySelector(".lft-translation-stream"), null);
 assert.equal(completed.root.querySelector("img"), null);
+assert.equal(
+  completed.root.querySelector(".lft-translation-lines")!.textContent,
+  "词典释义n. 示例A sample example.示例句子。<img src=x>",
+  "final semantic display keeps the text after removing Markdown syntax and the duplicate headword",
+);
+assert.deepEqual(
+  completed.root
+    .querySelector(".lft-translation-lines")!
+    .querySelectorAll(".lft-query-word")
+    .map((mark) => mark.textContent),
+  ["sample"],
+);
+
+// A query split across SSE deltas becomes a mark only after the whole word
+// arrives. Redrawing progress must replace old marks rather than duplicate text.
+const highlightedRequest = deferred<Response>();
+let highlightedStream!: Response & { onprogress?: () => void };
+handleRequest = async (options) => {
+  options.cancellerReceiver(() =>
+    highlightedRequest.reject(new Error("cancelled")),
+  );
+  highlightedStream = { status: 200, responseText: "" };
+  options.requestObserver(highlightedStream);
+  return highlightedRequest.promise;
+};
+const streamed = mount(async () => local, "bank");
+const streamedCompletion = streamed.card.translateOnline();
+let streamedText = "";
+for (const [delta, matches] of [
+  ["BAN", []],
+  ["K banker <img src=x>", ["BANK"]],
+  ["\nA bank example.", ["BANK", "bank"]],
+] as [string, string[]][]) {
+  streamedText += delta;
+  highlightedStream.responseText += `data: ${JSON.stringify({ type: "response.output_text.delta", delta })}\n\n`;
+  highlightedStream.onprogress?.();
+  const live = streamed.root.querySelector(".lft-translation-stream")!;
+  assert.equal(live.textContent, streamedText);
+  assert.deepEqual(
+    live.querySelectorAll(".lft-query-word").map((mark) => mark.textContent),
+    matches,
+  );
+  assert.ok(
+    live
+      .querySelectorAll(".lft-query-word")
+      .every((mark) => mark.tagName === "mark"),
+  );
+  assert.equal(live.querySelector("img"), null);
+  assert.equal(toolbar(streamed.root).disabled, true);
+  assert.equal(
+    streamed.root
+      .querySelector(".lft-dictionary-header")!
+      .querySelector(".lft-query-word"),
+    null,
+  );
+}
+highlightedStream.responseText += `data: ${JSON.stringify({ type: "response.completed", response: { status: "completed", output_text: streamedText } })}\n\n`;
+highlightedRequest.resolve(highlightedStream);
+await streamedCompletion;
+assert.equal(streamed.root.querySelector(".lft-translation-stream"), null);
+const finalHighlightedLines = streamed.root.querySelector(
+  ".lft-translation-lines",
+)!;
+assert.equal(
+  finalHighlightedLines.textContent,
+  "词典释义BANK banker <img src=x>A bank example.",
+);
+assert.deepEqual(
+  finalHighlightedLines
+    .querySelectorAll(".lft-query-word")
+    .map((mark) => mark.textContent),
+  ["BANK", "bank"],
+);
+assert.equal(finalHighlightedLines.querySelector("img"), null);
+assert.equal(toolbar(streamed.root).disabled, false);
+streamed.root.querySelector(".lft-button-annotation")!.click();
+await new Promise((resolve) => setTimeout(resolve, 0));
+assert.equal(streamed.saved[0], streamedText);
+streamed.root
+  .querySelectorAll("button")
+  .find((button) => button.textContent === "复制")!
+  .click();
+assert.equal(copied.at(-1), streamedText);
 
 // Switching a pending online explanation back to a local source invalidates
 // its progress/completion so it cannot replace the newly selected IPA/body.
@@ -433,5 +604,5 @@ assert.ok(stopped.root.textContent.includes("partial explanation"));
 assert.equal(toolbar(stopped.root).disabled, true);
 
 console.log(
-  "card window: compact stable controls, explicit request disposal and inert Markdown explanations passed (mock DOM)",
+  "card window: stable controls, safe Markdown/stream highlights, unchanged annotations/copy and explicit request disposal passed (mock DOM)",
 );
