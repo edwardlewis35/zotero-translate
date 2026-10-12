@@ -47,6 +47,8 @@ prefs.set("selectedApiProfileId", "custom");
 assert.deepEqual(getSelectedAPIProfile(), {
   ...legacy,
   protocol: "chat-completions",
+  thinkingMode: "off",
+  thinkingParameter: "auto",
 });
 assert.equal(loadAPIProfiles()[1].protocol, "responses");
 const migrated = saveAPIProfiles(loadAPIProfiles());
@@ -88,8 +90,8 @@ assert.equal(getSelectedAPIProfile().endpoint, DEFAULT_API_BASE_URL);
 assert.equal(getSelectedAPIProfile().protocol, "responses");
 Reflect.deleteProperty(globalThis, "Services");
 
-// The real preference renderer persists protocol changes and defaults new
-// cards to Responses; these are DOM double checks, not host UI validation.
+// The real preference renderer persists per-profile protocol and thinking
+// choices; these are DOM double checks, not host UI validation.
 prefs.clear();
 const doc = new TestDocument();
 for (const id of ["lft-api-profile-list", "lft-settings-status"]) {
@@ -102,6 +104,48 @@ controller["apiProfiles"] = saveAPIProfiles(loadAPIProfiles());
 controller["renderAPIProfiles"](doc as never);
 const protocol = doc.documentElement.querySelector(".lft-api-protocol")!;
 assert.equal(protocol.value, "responses");
+const thinkingMode = doc.documentElement.querySelector(
+  ".lft-api-thinking-mode",
+)!;
+const thinkingParameter = doc.documentElement.querySelector(
+  ".lft-api-thinking-parameter",
+)!;
+assert.equal(thinkingMode.value, "off");
+assert.deepEqual(
+  thinkingMode.children.map((option) => [option.value, option.textContent]),
+  [
+    ["off", "不思考（更快）"],
+    ["on", "思考"],
+    ["default", "跟随服务"],
+  ],
+);
+assert.equal(thinkingParameter.value, "auto");
+assert.deepEqual(
+  thinkingParameter.children.map((option) => option.value),
+  ["auto", "reasoning", "enable_thinking"],
+);
+const beforeThinkingChanges = getSelectedAPIProfile();
+thinkingMode.value = "on";
+thinkingMode.dispatchEvent(new Event("change"));
+thinkingParameter.value = "enable_thinking";
+thinkingParameter.dispatchEvent(new Event("change"));
+assert.deepEqual(getSelectedAPIProfile(), {
+  ...beforeThinkingChanges,
+  thinkingMode: "on",
+  thinkingParameter: "enable_thinking",
+});
+thinkingMode.value = "off";
+thinkingMode.dispatchEvent(new Event("change"));
+assert.equal(getSelectedAPIProfile().thinkingMode, "off");
+thinkingMode.value = "default";
+thinkingMode.dispatchEvent(new Event("change"));
+thinkingParameter.value = "reasoning";
+thinkingParameter.dispatchEvent(new Event("change"));
+assert.deepEqual(getSelectedAPIProfile(), {
+  ...beforeThinkingChanges,
+  thinkingMode: "default",
+  thinkingParameter: "reasoning",
+});
 protocol.value = "chat-completions";
 protocol.dispatchEvent(new Event("change"));
 assert.equal(getSelectedAPIProfile().protocol, "chat-completions");
@@ -110,10 +154,110 @@ assert.equal(getSelectedAPIProfile().protocol, "responses");
 assert.equal(getSelectedAPIProfile().endpoint, DEFAULT_API_BASE_URL);
 assert.equal(getSelectedAPIProfile().prompt, DEFAULT_PROMPT);
 assert.equal(getSelectedAPIProfile().model, "");
+assert.equal(getSelectedAPIProfile().thinkingMode, "off");
+assert.equal(getSelectedAPIProfile().thinkingParameter, "auto");
 assert.equal(
   doc.documentElement.querySelectorAll(".lft-api-protocol").length,
   2,
 );
+const restoredThinkingModes = doc.documentElement.querySelectorAll(
+  ".lft-api-thinking-mode",
+);
+const restoredThinkingParameters = doc.documentElement.querySelectorAll(
+  ".lft-api-thinking-parameter",
+);
+assert.deepEqual(
+  restoredThinkingModes.map((select) => select.value),
+  ["default", "off"],
+);
+assert.deepEqual(
+  restoredThinkingParameters.map((select) => select.value),
+  ["reasoning", "auto"],
+);
+restoredThinkingModes[1].value = "on";
+restoredThinkingModes[1].dispatchEvent(new Event("change"));
+restoredThinkingParameters[1].value = "enable_thinking";
+restoredThinkingParameters[1].dispatchEvent(new Event("change"));
+assert.deepEqual(
+  loadAPIProfiles().map(({ thinkingMode, thinkingParameter }) => ({
+    thinkingMode,
+    thinkingParameter,
+  })),
+  [
+    { thinkingMode: "default", thinkingParameter: "reasoning" },
+    { thinkingMode: "on", thinkingParameter: "enable_thinking" },
+  ],
+);
+
+// A long-lived settings pane must retain thinking choices changed in a reader.
+const firstID = loadAPIProfiles()[0].id;
+function setExternalThinking(
+  thinkingMode: APIProfile["thinkingMode"],
+  thinkingParameter: APIProfile["thinkingParameter"],
+): void {
+  saveAPIProfiles(
+    loadAPIProfiles().map((profile) =>
+      profile.id === firstID
+        ? { ...profile, thinkingMode, thinkingParameter }
+        : profile,
+    ),
+  );
+}
+restoredThinkingModes[0].value = "off";
+restoredThinkingModes[0].dispatchEvent(new Event("change"));
+restoredThinkingParameters[0].value = "auto";
+restoredThinkingParameters[0].dispatchEvent(new Event("change"));
+setExternalThinking("on", "enable_thinking");
+const externalProfile = loadAPIProfiles()[0];
+const nameField = doc.documentElement
+  .querySelectorAll(".lft-profile-field")
+  .find((field) => field.children[0].textContent === "配置名称")!;
+const nameInput = nameField.querySelector("input")!;
+nameInput.value = "Rename after reader change";
+nameInput.dispatchEvent(new Event("input"));
+assert.deepEqual(loadAPIProfiles()[0], {
+  ...externalProfile,
+  name: nameInput.value,
+});
+assert.equal(restoredThinkingModes[0].value, "on");
+assert.equal(restoredThinkingParameters[0].value, "enable_thinking");
+
+// An explicit selection overrides its own field while preserving the other.
+setExternalThinking("off", "reasoning");
+restoredThinkingModes[0].value = "on";
+restoredThinkingModes[0].dispatchEvent(new Event("change"));
+assert.equal(loadAPIProfiles()[0].thinkingMode, "on");
+assert.equal(loadAPIProfiles()[0].thinkingParameter, "reasoning");
+setExternalThinking("off", "auto");
+restoredThinkingParameters[0].value = "enable_thinking";
+restoredThinkingParameters[0].dispatchEvent(new Event("change"));
+assert.equal(loadAPIProfiles()[0].thinkingMode, "off");
+assert.equal(loadAPIProfiles()[0].thinkingParameter, "enable_thinking");
+assert.equal(restoredThinkingModes[0].value, "off");
+
+// Adding and removing a different configuration also preserves reader changes.
+setExternalThinking("on", "enable_thinking");
+controller["addAPIProfile"](doc as never);
+assert.equal(loadAPIProfiles()[0].thinkingMode, "on");
+assert.equal(loadAPIProfiles()[0].thinkingParameter, "enable_thinking");
+assert.equal(loadAPIProfiles()[2].thinkingMode, "off");
+assert.equal(loadAPIProfiles()[2].thinkingParameter, "auto");
+setExternalThinking("off", "reasoning");
+doc.documentElement
+  .querySelectorAll(".lft-api-profile")[2]
+  .querySelector(".lft-icon-button")!
+  .click();
+assert.equal(loadAPIProfiles().length, 2);
+assert.equal(loadAPIProfiles()[0].thinkingMode, "off");
+assert.equal(loadAPIProfiles()[0].thinkingParameter, "reasoning");
+assert.equal(
+  doc.documentElement.querySelector(".lft-api-thinking-mode")!.value,
+  "off",
+);
+assert.equal(
+  doc.documentElement.querySelector(".lft-api-thinking-parameter")!.value,
+  "reasoning",
+);
 console.log(
-  "API profiles: defaults, legacy migration, selection, protocol persistence and new profile UI passed (mock DOM)",
+  "API profiles: defaults, legacy migration, selection, per-profile protocol and thinking controls passed (mock DOM)",
 );

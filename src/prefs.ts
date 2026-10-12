@@ -18,11 +18,16 @@ export interface DictionaryConfig {
   enabled: boolean;
 }
 
+export type ThinkingMode = "off" | "on" | "default";
+export type ThinkingParameter = "auto" | "reasoning" | "enable_thinking";
+
 export interface APIProfile {
   id: string;
   name: string;
   endpoint: string;
   protocol?: APIProtocol;
+  thinkingMode?: ThinkingMode;
+  thinkingParameter?: ThinkingParameter;
   apiKey: string;
   model: string;
   temperature: string;
@@ -204,6 +209,8 @@ function legacyAPIProfile(settings: PluginSettings): APIProfile {
     name: "默认 API",
     endpoint,
     protocol: inferAPIProtocol(endpoint),
+    thinkingMode: "off",
+    thinkingParameter: "auto",
     apiKey: settings.openaiApiKey,
     model: settings.openaiModel || (usesOldDefault ? "gpt-4o-mini" : ""),
     temperature: settings.openaiTemperature,
@@ -226,6 +233,15 @@ function normalizeAPIProfile(value: unknown, index: number): APIProfile | null {
         ? input.protocol
         : inferAPIProtocol(stringValue(input.endpoint)),
     apiKey: stringValue(input.apiKey),
+    thinkingMode:
+      input.thinkingMode === "on" || input.thinkingMode === "default"
+        ? input.thinkingMode
+        : "off",
+    thinkingParameter:
+      input.thinkingParameter === "reasoning" ||
+      input.thinkingParameter === "enable_thinking"
+        ? input.thinkingParameter
+        : "auto",
     model,
     temperature: stringValue(input.temperature, "0.2"),
     targetLanguage: stringValue(input.targetLanguage, "简体中文"),

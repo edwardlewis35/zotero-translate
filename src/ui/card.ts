@@ -10,6 +10,7 @@ import {
   getPref,
   getSelectedAPIProfile,
   loadAPIProfiles,
+  saveAPIProfiles,
   selectAPIProfile,
   type APIProfile,
 } from "../prefs";
@@ -200,6 +201,7 @@ export class TranslationCard {
     actionWrap.append(
       this.modelPicker(modelPickerDisabled),
       this.annotationButton(),
+      this.thinkingPicker(modelPickerDisabled),
       ...(this.isWord && this.saveAnnotation
         ? [
             this.button("编辑批注", () => {
@@ -392,6 +394,49 @@ export class TranslationCard {
       event.stopPropagation();
       this.selectedProfileID = select.value;
       selectAPIProfile(select.value);
+      const thinking = this.root.querySelector<HTMLSelectElement>(
+        ".lft-thinking-select",
+      );
+      if (thinking)
+        thinking.value =
+          getSelectedAPIProfile(this.selectedProfileID).thinkingMode || "off";
+    });
+    label.append(select);
+    return label;
+  }
+
+  private thinkingPicker(disabled = false): HTMLLabelElement {
+    const label = this.element("label", "lft-thinking-picker");
+    label.title = "按当前模型保存，修改后用于下一次 AI 翻译";
+    label.append(this.element("span", "lft-model-picker-label", "思考"));
+    const select = this.element("select", "lft-thinking-select");
+    select.setAttribute("aria-label", "思考模式");
+    select.disabled = disabled;
+    for (const [value, text] of [
+      ["off", "不思考"],
+      ["on", "思考"],
+      ["default", "跟随服务"],
+    ]) {
+      const option = this.element("option", "", text);
+      option.value = value;
+      select.append(option);
+    }
+    select.value =
+      getSelectedAPIProfile(this.selectedProfileID).thinkingMode || "off";
+    select.addEventListener("pointerdown", (event) => event.stopPropagation());
+    select.addEventListener("change", (event) => {
+      event.stopPropagation();
+      const mode =
+        select.value === "on" || select.value === "default"
+          ? select.value
+          : "off";
+      saveAPIProfiles(
+        loadAPIProfiles().map((profile) =>
+          profile.id === this.selectedProfileID
+            ? { ...profile, thinkingMode: mode }
+            : profile,
+        ),
+      );
     });
     label.append(select);
     return label;

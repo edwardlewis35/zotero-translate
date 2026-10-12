@@ -24,6 +24,8 @@ import {
   setPref,
   type APIProfile,
   type DictionaryConfig,
+  type ThinkingMode,
+  type ThinkingParameter,
 } from "./prefs";
 
 type PreferenceDocument = Document & {
@@ -283,6 +285,8 @@ export class PreferencesController {
       name: `模型 ${index}`,
       endpoint: DEFAULT_API_BASE_URL,
       protocol: "responses",
+      thinkingMode: "off",
+      thinkingParameter: "auto",
       apiKey: "",
       model: "",
       temperature: "0.2",
@@ -294,10 +298,54 @@ export class PreferencesController {
   private addAPIProfile(doc: Document): void {
     const profile = this.newAPIProfile();
     this.apiProfiles.push(profile);
-    this.apiProfiles = saveAPIProfiles(this.apiProfiles);
+    this.persistAPIProfiles(doc);
     selectAPIProfile(profile.id);
     this.renderAPIProfiles(doc);
     this.setStatus(doc, "已增加一个模型 API 配置", "ok");
+  }
+
+  private persistAPIProfiles(
+    doc: Document,
+    changedThinking?: {
+      id: string;
+      key: "thinkingMode" | "thinkingParameter";
+    },
+  ): void {
+    const latest = new Map(
+      loadAPIProfiles().map((profile) => [profile.id, profile]),
+    );
+    for (const profile of this.apiProfiles) {
+      const saved = latest.get(profile.id);
+      if (!saved) continue;
+      // The reader can change thinking settings while this pane stays open.
+      // Preserve its latest choices unless this control explicitly changed one.
+      if (
+        changedThinking?.id !== profile.id ||
+        changedThinking.key !== "thinkingMode"
+      ) {
+        profile.thinkingMode = saved.thinkingMode || "off";
+      }
+      if (
+        changedThinking?.id !== profile.id ||
+        changedThinking.key !== "thinkingParameter"
+      ) {
+        profile.thinkingParameter = saved.thinkingParameter || "auto";
+      }
+    }
+    saveAPIProfiles(this.apiProfiles);
+    const current = new Map(
+      this.apiProfiles.map((profile) => [profile.id, profile]),
+    );
+    for (const element of doc.querySelectorAll(".lft-api-thinking-mode")) {
+      const select = element as HTMLSelectElement;
+      const profile = current.get(select.dataset.profileId || "");
+      if (profile) select.value = profile.thinkingMode || "off";
+    }
+    for (const element of doc.querySelectorAll(".lft-api-thinking-parameter")) {
+      const select = element as HTMLSelectElement;
+      const profile = current.get(select.dataset.profileId || "");
+      if (profile) select.value = profile.thinkingParameter || "auto";
+    }
   }
 
   private profileField(
@@ -344,7 +392,7 @@ export class PreferencesController {
     if (options.placeholder) input.placeholder = options.placeholder;
     input.addEventListener("input", () => {
       profile[key] = input.value;
-      saveAPIProfiles(this.apiProfiles);
+      this.persistAPIProfiles(doc);
     });
     field.append(input);
     return field;
@@ -413,7 +461,7 @@ export class PreferencesController {
         this.apiProfiles = this.apiProfiles.filter(
           (item) => item.id !== profile.id,
         );
-        this.apiProfiles = saveAPIProfiles(this.apiProfiles);
+        this.persistAPIProfiles(doc);
         this.renderAPIProfiles(doc);
         this.setStatus(doc, `已删除 API 配置：${profile.name}`, "ok");
       });
@@ -444,9 +492,77 @@ export class PreferencesController {
           protocol.value === "chat-completions"
             ? "chat-completions"
             : "responses";
-        saveAPIProfiles(this.apiProfiles);
+        this.persistAPIProfiles(doc);
       });
       protocolField.append(protocol);
+      const thinkingField = this.html(doc, "label", "lft-profile-field");
+      thinkingField.append(
+        this.html(doc, "span", "lft-profile-label", "思考模式"),
+      );
+      const thinkingMode = this.html(
+        doc,
+        "select",
+        "lft-profile-input lft-api-thinking-mode",
+      );
+      thinkingMode.dataset.profileId = profile.id;
+      for (const [value, label] of [
+        ["off", "不思考（更快）"],
+        ["on", "思考"],
+        ["default", "跟随服务"],
+      ]) {
+        const option = this.html(doc, "option", "", label);
+        option.value = value;
+        thinkingMode.append(option);
+      }
+      thinkingMode.value = profile.thinkingMode || "off";
+      thinkingMode.addEventListener("change", () => {
+        profile.thinkingMode = (
+          ["off", "on", "default"].includes(thinkingMode.value)
+            ? thinkingMode.value
+            : "off"
+        ) as ThinkingMode;
+        this.persistAPIProfiles(doc, { id: profile.id, key: "thinkingMode" });
+      });
+      thinkingField.append(thinkingMode);
+
+      const thinkingParameterField = this.html(
+        doc,
+        "label",
+        "lft-profile-field",
+      );
+      thinkingParameterField.append(
+        this.html(doc, "span", "lft-profile-label", "思考兼容设置（高级）"),
+      );
+      const thinkingParameter = this.html(
+        doc,
+        "select",
+        "lft-profile-input lft-api-thinking-parameter",
+      );
+      thinkingParameter.dataset.profileId = profile.id;
+      for (const [value, label] of [
+        ["auto", "自动适配"],
+        ["reasoning", "标准思考参数"],
+        ["enable_thinking", "千问兼容开关"],
+      ]) {
+        const option = this.html(doc, "option", "", label);
+        option.value = value;
+        thinkingParameter.append(option);
+      }
+      thinkingParameter.value = profile.thinkingParameter || "auto";
+      thinkingParameter.addEventListener("change", () => {
+        profile.thinkingParameter = (
+          ["auto", "reasoning", "enable_thinking"].includes(
+            thinkingParameter.value,
+          )
+            ? thinkingParameter.value
+            : "auto"
+        ) as ThinkingParameter;
+        this.persistAPIProfiles(doc, {
+          id: profile.id,
+          key: "thinkingParameter",
+        });
+      });
+      thinkingParameterField.append(thinkingParameter);
       fields.append(
         this.profileField(doc, profile, "name", "配置名称", {
           placeholder: "例如：OpenAI、DeepSeek、本地模型",
@@ -455,6 +571,7 @@ export class PreferencesController {
           placeholder: "填写服务支持的模型名称",
         }),
         protocolField,
+        thinkingField,
         this.profileField(doc, profile, "endpoint", "Base URL", {
           type: "url",
           placeholder: DEFAULT_API_BASE_URL,
@@ -471,12 +588,19 @@ export class PreferencesController {
         this.profileField(doc, profile, "temperature", "Temperature", {
           type: "number",
         }),
+        thinkingParameterField,
         this.profileField(doc, profile, "prompt", "提示词", {
           multiline: true,
           wide: true,
         }),
       );
-      card.append(header, fields);
+      const thinkingHint = this.html(
+        doc,
+        "p",
+        "lft-pref-hint",
+        "默认不思考，直接生成解释。思考模式是否生效取决于模型；兼容服务报参数错误时，可在高级设置中选择对应方式，或选择“跟随服务”。",
+      );
+      card.append(header, fields, thinkingHint);
       list.append(card);
     }
   }
@@ -582,7 +706,7 @@ export class PreferencesController {
     profile: APIProfile,
     button: HTMLButtonElement,
   ): Promise<void> {
-    this.apiProfiles = saveAPIProfiles(this.apiProfiles);
+    this.persistAPIProfiles(doc);
     button.disabled = true;
     button.textContent = "连接中…";
     this.setStatus(doc, `正在测试“${profile.name}”…`, "");

@@ -52,10 +52,12 @@ let requestBody: Record<string, unknown> = {};
 let requestURL = "";
 let requestHeaders: Record<string, string> = {};
 let aborted = false;
+let requestCount = 0;
 Object.assign(globalThis, {
   Zotero: {
     HTTP: {
       request: async (method: string, url: string, options: RequestOptions) => {
+        requestCount += 1;
         assert.equal(method, "POST");
         assert.equal(options.responseType, "text");
         requestURL = url;
@@ -112,6 +114,9 @@ assert.equal(requestURL, "https://example.com/compatible-mode/v1/responses");
 assert.equal(requestBody.stream, true);
 assert.equal(requestBody.store, false);
 assert.equal(requestBody.messages, undefined);
+assert.deepEqual(requestBody.reasoning, { effort: "none" });
+assert.equal(requestBody.reasoning_effort, undefined);
+assert.equal(requestBody.enable_thinking, undefined);
 const wordInput = requestBody.input as {
   role: "system" | "user";
   content: string;
@@ -160,6 +165,80 @@ assert.deepEqual(requestBody.messages, wordInput);
 assert.equal(requestHeaders.Authorization, undefined);
 assert.equal(chatResult.text, "聊天兼容");
 assert.equal(chatResult.model, "chat-model");
+assert.equal(requestBody.reasoning_effort, "none");
+assert.equal(requestBody.reasoning, undefined);
+assert.equal(requestBody.enable_thinking, undefined);
+
+// Mode/adapter changes affect the actual request without changing the word prompt.
+scenario = { chunks: [], object: completed("测试译文").response };
+for (const protocol of ["responses", "chat-completions"] as const) {
+  for (const thinkingMode of ["off", "on", "default"] as const) {
+    await translateWithOpenAI("hello", {
+      profile: {
+        ...profile,
+        endpoint: "https://token-plan.maas.qianwenaiapi.com/compatible-mode/v1",
+        model: "qwen3.5-plus",
+        protocol,
+        thinkingMode,
+      },
+    });
+    assert.deepEqual(
+      protocol === "responses" ? requestBody.input : requestBody.messages,
+      wordInput,
+    );
+    assert.equal(requestBody.temperature, 0.2);
+    assert.equal(requestBody.stream, true);
+    assert.equal(requestBody.extra_body, undefined);
+    assert.equal(requestBody.reasoning_effort, undefined);
+    assert.deepEqual(
+      requestBody.reasoning,
+      thinkingMode === "default" || protocol === "chat-completions"
+        ? undefined
+        : { effort: thinkingMode === "off" ? "none" : "medium" },
+    );
+    assert.equal(
+      requestBody.enable_thinking,
+      thinkingMode === "default" || protocol === "responses"
+        ? undefined
+        : thinkingMode === "on",
+    );
+  }
+}
+await translateWithOpenAI("hello", {
+  profile: {
+    ...profile,
+    thinkingMode: "on",
+    thinkingParameter: "enable_thinking",
+  },
+});
+assert.equal(requestBody.enable_thinking, true);
+assert.equal(requestBody.reasoning, undefined);
+await translateWithOpenAI("hello", {
+  profile: { ...profile, model: "gpt-5.2", thinkingMode: "on" },
+});
+assert.deepEqual(requestBody.reasoning, { effort: "medium" });
+assert.equal(requestBody.temperature, undefined);
+await translateWithOpenAI("hello", {
+  profile: { ...profile, model: "gpt-4.1-mini" },
+});
+assert.equal(requestBody.reasoning, undefined);
+assert.equal(requestBody.temperature, 0.2);
+
+// An HTTP 400 never retries with a changed or omitted thinking mode.
+scenario = {
+  chunks: ['{"error":{"message":"unsupported reasoning effort"}}'],
+  status: 400,
+  reject: true,
+};
+const countBeforeFailure = requestCount;
+await assert.rejects(
+  translateWithOpenAI("hello", {
+    profile: { ...profile, thinkingMode: "off" },
+  }),
+  /HTTP 400.*unsupported reasoning effort/u,
+);
+assert.equal(requestCount, countBeforeFailure + 1);
+assert.deepEqual(requestBody.reasoning, { effort: "none" });
 
 // The actual payload switches mode after a lookup edit, for either API protocol.
 scenario = { chunks: [], object: completed("测试译文").response };

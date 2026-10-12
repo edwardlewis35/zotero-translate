@@ -85,7 +85,11 @@ MDX 按词典分别缓存，索引按块建立并让出界面线程，不再反�
 
 ## 配置 OpenAI-compatible API
 
-设置页的“＋ 添加 API”可保存多个 OpenAI-compatible 服务。每个服务独立保存名称、Base URL、API 协议、API Key、模型、目标语言、Temperature 和提示词；选词卡片顶部的“模型”下拉框决定本次翻译使用哪个配置。模型名称需填写当前服务和账号支持的模型，插件不会自动选择模型。
+设置页的“＋ 添加 API”可保存多个 OpenAI-compatible 服务。每个服务独立保存名称、Base URL、API 协议、API Key、模型、思考模式、目标语言、Temperature 和提示词；选词卡片顶部的“模型”下拉框决定本次翻译使用哪个配置。模型名称需填写当前服务和账号支持的模型，插件不会自动选择模型。
+
+思考模式默认“不思考”，旧配置升级后也采用该默认值。可在设置页或浮窗顶部选择“不思考／思考／跟随服务”，选择按模型保存并用于下一次 AI 请求；仅切换选项不会自动发送请求。切换模型会同步显示该模型已保存的模式。正在接收译文时锁定模式，停止或完成后可继续修改。单词未命中的自动 AI 释义和句子翻译共用这一设置，不会缩减完整释义或例句。
+
+Responses 的标准控制参数为 `reasoning.effort: "none" / "medium"`；千问 Chat 兼容接口使用顶层 `enable_thinking: false / true`。“跟随服务”不传思考覆盖参数。高级兼容设置可手动指定标准参数或千问兼容开关，适用于采用别名或不同参数的服务。已知无法关闭思考的模型会提示选择“跟随服务”或更换模型；接口拒绝参数时不会静默改变模式或重试。具体支持依所选服务和模型而定，参考[千问 Responses 参数](https://help.aliyun.com/zh/model-studio/qwen-api-via-openai-responses)、[千问思考模式](https://help.aliyun.com/zh/model-studio/deep-thinking)及[OpenAI reasoning](https://developers.openai.com/api/docs/guides/reasoning)。
 
 新配置默认使用 Responses API，并预填千问 Token Plan 的 Base URL：
 
@@ -95,7 +99,7 @@ Content-Type: application/json
 Authorization: Bearer YOUR_KEY
 ```
 
-请求体包含 `model`、`input`、`temperature`、`stream: true` 和 `store: false`。按 SSE 事件 `response.output_text.delta` 实时追加译文，完成快照去重；思考过程和工具事件不会混入译文。`response.completed` 确认完成，失败、未完成、拒绝和流中断会显示错误，不会将截断译文当作翻译成功。
+请求体包含 `model`、`input`、`stream: true`、`store: false` 和所选思考模式参数；在支持的模型上发送 `temperature`，已知 OpenAI 思考模型需要时省略该采样参数。按 SSE 事件 `response.output_text.delta` 实时追加译文，完成快照去重；思考过程和工具事件不会混入译文。`response.completed` 确认完成，失败、未完成、拒绝和流中断会显示错误，不会将截断译文当作翻译成功。
 
 Base URL 只需填写到版本路径，插件会自动补齐 `/responses`，例如：
 

@@ -1,6 +1,7 @@
 import { resolveAPIEndpoint } from "./api-endpoint";
 import { getSelectedAPIProfile, type APIProfile } from "./prefs";
 import { buildTranslationMessages, type SelectionMode } from "./prompts";
+import { buildThinkingRequestOptions } from "./thinking";
 import {
   looksLikeHTML,
   OpenAIStreamDecoder,
@@ -73,6 +74,7 @@ export async function translateWithOpenAI(
   const temperature = Number.isFinite(temperatureValue)
     ? Math.min(2, Math.max(0, temperatureValue))
     : 0.2;
+  const thinking = buildThinkingRequestOptions(profile, protocol);
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     Accept: "text/event-stream, application/json",
@@ -90,7 +92,8 @@ export async function translateWithOpenAI(
     ...(protocol === "responses"
       ? { input, store: false }
       : { messages: input }),
-    temperature,
+    ...(thinking.omitTemperature ? {} : { temperature }),
+    ...thinking.parameters,
     stream: true,
   };
 

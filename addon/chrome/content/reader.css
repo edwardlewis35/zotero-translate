@@ -123,7 +123,8 @@
 }
 
 .lft-button:focus-visible,
-.lft-model-select:focus-visible {
+.lft-model-select:focus-visible,
+.lft-thinking-select:focus-visible {
   outline: 2px solid var(--lft-accent);
   outline-offset: 2px;
 }
@@ -219,7 +220,8 @@
   margin-top: 6px;
 }
 
-.lft-model-picker {
+.lft-model-picker,
+.lft-thinking-picker {
   display: inline-flex;
   min-height: 30px;
   max-width: 100%;
@@ -237,7 +239,8 @@
   font-weight: 400;
 }
 
-.lft-model-select {
+.lft-model-select,
+.lft-thinking-select {
   width: min(170px, 27vw);
   min-width: 92px;
   height: 24px;
@@ -251,7 +254,13 @@
   font-weight: 400;
 }
 
-.lft-model-select:disabled {
+.lft-thinking-select {
+  width: 90px;
+  min-width: 76px;
+}
+
+.lft-model-select:disabled,
+.lft-thinking-select:disabled {
   opacity: 0.72;
 }
 

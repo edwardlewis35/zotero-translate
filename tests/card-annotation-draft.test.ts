@@ -74,6 +74,21 @@ function mount(isWord = true) {
   const { document, window } = parseHTML(
     "<html><head></head><body></body></html>",
   );
+  // linkedom exposes select.value as a getter only. Match the native setter
+  // used by the mode picker; actual Gecko behavior is checked separately.
+  const selectPrototype = window.HTMLSelectElement.prototype;
+  const selectValue = Object.getOwnPropertyDescriptor(
+    selectPrototype,
+    "value",
+  )!;
+  if (!selectValue.set)
+    Object.defineProperty(selectPrototype, "value", {
+      ...selectValue,
+      set(this: HTMLSelectElement, value: string) {
+        for (const option of this.options)
+          option.selected = option.value === value;
+      },
+    });
   const saved: string[] = [];
   let selection: Selection | null = null;
   Object.defineProperty(document, "getSelection", { value: () => selection });
