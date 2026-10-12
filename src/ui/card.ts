@@ -16,6 +16,10 @@ import {
 
 import { isSingleWord, normalizeSelectedWord } from "../selection";
 import { splitQueryHighlights } from "./highlight";
+import {
+  AnnotationDraft,
+  getSelectedTranslationText,
+} from "./annotation-draft";
 
 const STYLE_ID = "lexiflowdicttranslator-reader-style";
 let nextCardID = 0;
@@ -68,6 +72,11 @@ export class TranslationCard {
   private selectedDictionaryIndex = 0;
   private readonly expandedDictionarySources = new Set<string>();
   private readonly collapsedDictionarySections = new Set<string>();
+  private readonly annotationDraft = new AnnotationDraft();
+  private annotationDraftOpen = false;
+  private annotationDefaultText?: string;
+  private annotationSaving = false;
+  private annotationSavedText?: string;
 
   constructor(
     private readonly doc: Document,
@@ -85,6 +94,13 @@ export class TranslationCard {
     this.root.addEventListener("pointerdown", (event) => {
       event.stopPropagation();
     });
+    const captureSelection = (event: Event) =>
+      this.captureAnnotationSelection(event);
+    // Mouse release captures a finished drag; key release also supports Shift
+    // selection. No selectionchange listener interrupts a drag or typing.
+    this.root.addEventListener("mouseup", captureSelection);
+    this.root.addEventListener("pointerup", captureSelection);
+    this.root.addEventListener("keyup", captureSelection);
   }
 
   start(): void {
@@ -177,12 +193,26 @@ export class TranslationCard {
     annotationText?: string,
   ): void {
     if (this.disposed) return;
+    this.annotationDefaultText = annotationText;
     const header = this.element("div", "lft-card-header");
     header.setAttribute("aria-label", subtitle);
     const actionWrap = this.element("div", "lft-card-actions");
     actionWrap.append(
       this.modelPicker(modelPickerDisabled),
-      this.annotationButton(annotationText),
+      this.annotationButton(),
+      ...(this.isWord && this.saveAnnotation
+        ? [
+            this.button("编辑批注", () => {
+              this.annotationDraftOpen = true;
+              this.syncAnnotationDraft();
+              this.root
+                .querySelector<HTMLTextAreaElement>(
+                  ".lft-annotation-draft-input",
+                )
+                ?.focus();
+            }),
+          ]
+        : []),
       ...actions,
     );
     header.append(actionWrap);
@@ -195,6 +225,142 @@ export class TranslationCard {
     const bodyWrap = this.element("div", "lft-card-body");
     bodyWrap.append(body);
     this.root.replaceChildren(header, bodyWrap);
+    if (this.isWord && this.saveAnnotation)
+      this.root.append(this.annotationDraftEditor());
+    this.syncAnnotationDraft();
+  }
+
+  private captureAnnotationSelection(event: Event): void {
+    if (this.disposed || !this.isWord || !this.saveAnnotation) return;
+    const target = event.target as Element | null;
+    if (
+      target?.closest?.(
+        ".lft-card-header, .lft-annotation-draft, button, select, input, textarea, a",
+      )
+    )
+      return;
+    for (const content of this.root.querySelectorAll<HTMLElement>(
+      ".lft-dictionary, .lft-translation-lines, .lft-translation-stream",
+    )) {
+      if (!content) continue;
+      const selected = getSelectedTranslationText(this.doc, content);
+      if (!selected || !this.annotationDraft.addSelection(selected)) continue;
+      this.annotationDraftOpen = true;
+      this.annotationSavedText = undefined;
+      this.root.querySelector(".lft-annotation-status")?.remove();
+      this.syncAnnotationDraft();
+      break;
+    }
+  }
+
+  private annotationDraftEditor(): HTMLDetailsElement {
+    const editor = this.element("details", "lft-annotation-draft");
+    editor.open = this.annotationDraftOpen;
+    const summary = this.element("summary", "lft-annotation-draft-summary");
+    summary.append(
+      this.element("span", "", "批注内容"),
+      this.element("span", "lft-annotation-draft-count"),
+    );
+    const body = this.element("div", "lft-annotation-draft-body");
+    const hint = this.element(
+      "div",
+      "lft-annotation-draft-hint",
+      "在释义或例句中拖选文字，松开鼠标后自动追加；可多次选取，也可直接输入。",
+    );
+    const input = this.element("textarea", "lft-annotation-draft-input");
+    input.rows = 3;
+    input.placeholder = "拖选后自动合并到这里，或输入要写入的批注…";
+    input.setAttribute("aria-label", "编辑要写入 PDF 的批注内容");
+    input.addEventListener("input", () => {
+      this.annotationDraft.setText(input.value);
+      this.annotationSavedText = undefined;
+      this.root.querySelector(".lft-annotation-status")?.remove();
+      this.syncAnnotationDraft();
+    });
+    const actions = this.element("div", "lft-annotation-draft-actions");
+    const full = this.button("使用完整结果", () => {
+      this.annotationDraft.reset();
+      this.annotationSavedText = undefined;
+      this.root.querySelector(".lft-annotation-status")?.remove();
+      this.syncAnnotationDraft();
+    });
+    full.classList.add("lft-button-full-annotation");
+    const clear = this.button("清空", () => {
+      this.annotationDraft.setText("");
+      this.annotationSavedText = undefined;
+      this.root.querySelector(".lft-annotation-status")?.remove();
+      this.syncAnnotationDraft();
+      input.focus();
+    });
+    clear.classList.add("lft-button-clear-annotation");
+    actions.append(full, clear);
+    body.append(hint, input, actions);
+    editor.append(summary, body);
+    editor.addEventListener("toggle", () => {
+      if (editor.isConnected) this.annotationDraftOpen = editor.open;
+    });
+    return editor;
+  }
+
+  private annotationText(): string {
+    return this.isWord && this.annotationDraft.hasDraft
+      ? this.annotationDraft.text
+      : this.annotationDefaultText || "";
+  }
+
+  private setQueryText(text: string): void {
+    if (
+      normalizeSelectedWord(text).toLocaleLowerCase() !==
+      normalizeSelectedWord(this.queryText).toLocaleLowerCase()
+    ) {
+      this.annotationDraft.reset();
+      this.annotationSavedText = undefined;
+    }
+    this.queryText = text;
+  }
+
+  private syncAnnotationDraft(): void {
+    const editor = this.root.querySelector<HTMLDetailsElement>(
+      ".lft-annotation-draft",
+    );
+    if (editor) editor.open = this.annotationDraftOpen;
+    const input = this.root.querySelector<HTMLTextAreaElement>(
+      ".lft-annotation-draft-input",
+    );
+    if (input && input.value !== this.annotationDraft.text)
+      input.value = this.annotationDraft.text;
+    const count = this.root.querySelector(".lft-annotation-draft-count");
+    if (count)
+      count.textContent = this.annotationDraft.hasDraft
+        ? `自定义 · ${this.annotationDraft.text.trim().length} 字符`
+        : "默认写入完整结果";
+    const button = this.root.querySelector<HTMLButtonElement>(
+      ".lft-button-annotation",
+    );
+    if (!button) return;
+    const text = this.annotationText().trim();
+    const saved = !!text && this.annotationSavedText === text;
+    button.disabled =
+      !this.saveAnnotation || !text || this.annotationSaving || saved;
+    button.classList.toggle("lft-button-success", saved);
+    button.textContent = this.annotationSaving
+      ? "正在写入…"
+      : saved
+        ? "✓ 已写入"
+        : "写入批注";
+    button.title = !this.saveAnnotation
+      ? "当前选区不支持写入批注"
+      : this.annotationSaving
+        ? "正在保存批注"
+        : saved
+          ? "当前内容已保存，编辑后可以再次写入"
+          : !text
+            ? this.annotationDraft.hasDraft
+              ? "批注内容为空，请输入或重新选取文字"
+              : "获得完整查询结果或输入自定义内容后可以写入批注"
+            : this.isWord && this.annotationDraft.hasDraft
+              ? "只将编辑框中的内容写入当前 PDF 选区的批注"
+              : "对当前选中文本创建下划线，并把完整翻译写入批注内容";
   }
 
   private modelPicker(disabled = false): HTMLLabelElement {
@@ -639,59 +805,51 @@ export class TranslationCard {
     status.textContent = message;
   }
 
-  private annotationButton(translation?: string): HTMLButtonElement {
-    const saveAnnotation = this.saveAnnotation;
-    const requestID = this.requestID;
-    let button: HTMLButtonElement;
-    button = this.button(
+  private annotationButton(): HTMLButtonElement {
+    const button = this.button(
       "写入批注",
       () => {
-        if (!saveAnnotation || !translation?.trim() || this.disposed) return;
+        const saveAnnotation = this.saveAnnotation;
+        const translation = this.annotationText().trim();
+        if (
+          !saveAnnotation ||
+          !translation ||
+          this.disposed ||
+          this.annotationSaving ||
+          this.annotationSavedText === translation
+        )
+          return;
+        const requestID = this.requestID;
         this.root.querySelector(".lft-annotation-status")?.remove();
-        button.disabled = true;
-        button.textContent = "正在写入…";
+        this.annotationSaving = true;
+        this.syncAnnotationDraft();
         void saveAnnotation(translation)
           .then(() => {
-            if (
-              this.disposed ||
-              requestID !== this.requestID ||
-              !button.isConnected
-            )
-              return;
-            button.textContent = "✓ 已写入";
-            button.title = "已创建下划线批注";
-            button.classList.add("lft-button-success");
-            this.showAnnotationStatus(
-              "翻译内容已保存到 Zotero 下划线批注。",
-              "success",
-            );
+            if (this.disposed || requestID !== this.requestID) return;
+            this.annotationSavedText = translation;
+            if (this.annotationText().trim() === translation)
+              this.showAnnotationStatus(
+                "批注内容已保存到 Zotero 下划线批注。",
+                "success",
+              );
           })
           .catch((error: unknown) => {
             const message = errorMessage(error);
             Zotero.logError(
               error instanceof Error ? error : new Error(message),
             );
-            if (
-              this.disposed ||
-              requestID !== this.requestID ||
-              !button.isConnected
-            )
-              return;
-            button.disabled = false;
-            button.textContent = "重试写入";
-            button.title = `写入批注失败：${message}`;
+            if (this.disposed || requestID !== this.requestID) return;
             this.showAnnotationStatus(`写入批注失败：${message}`, "error");
+          })
+          .finally(() => {
+            this.annotationSaving = false;
+            if (!this.disposed) this.syncAnnotationDraft();
           });
       },
       false,
-      "对当前选中文本创建下划线，并把本次翻译写入批注内容",
+      "将完整翻译或自定义内容写入当前 PDF 选区的批注",
     );
     button.classList.add("lft-button-annotation");
-    button.disabled = !saveAnnotation || !translation?.trim();
-    if (button.disabled)
-      button.title = saveAnnotation
-        ? "获得完整查询结果后可以写入批注"
-        : "当前选区不支持写入批注";
     return button;
   }
 
@@ -706,7 +864,7 @@ export class TranslationCard {
       if (section.open) this.collapsedDictionarySections.delete(key);
       else this.collapsedDictionarySections.add(key);
     }
-    this.queryText = result.word;
+    this.setQueryText(result.word);
     const content = this.element("div", "lft-local-result");
     const panels = result.entries.map((entry) => this.renderDictionary(entry));
     if (this.selectedDictionaryIndex >= panels.length)
@@ -800,7 +958,7 @@ export class TranslationCard {
   }
 
   private renderLocalMiss(result: LocalLookupResult): void {
-    this.queryText = result.word;
+    this.setQueryText(result.word);
     const state = this.element("div", "lft-state");
     const content = this.element("div");
     const noDictionary = result.configuredDictionaries === 0;
@@ -831,7 +989,7 @@ export class TranslationCard {
         input.focus();
         return;
       }
-      this.queryText = value;
+      this.setQueryText(value);
       void this.lookupLocal();
     };
     input.addEventListener("keydown", (event) => {

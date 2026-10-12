@@ -157,6 +157,68 @@
   color: #b24949;
 }
 
+.lft-annotation-draft {
+  flex: 0 0 auto;
+  min-height: 0;
+  max-height: min(260px, 36vh);
+  overflow: auto;
+  border-top: 1px solid var(--lft-border);
+  background: var(--lft-surface-2);
+}
+
+.lft-annotation-draft-summary {
+  padding: 8px 14px;
+  color: var(--lft-text-2);
+  font-size: 13px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.lft-annotation-draft-count {
+  margin-left: 10px;
+  color: var(--lft-text-3);
+  font-size: 12px;
+}
+
+.lft-annotation-draft-body {
+  padding: 0 14px 10px;
+}
+
+.lft-annotation-draft-hint {
+  margin-bottom: 6px;
+  color: var(--lft-text-3);
+  font-size: 12px;
+}
+
+.lft-annotation-draft-input {
+  display: block;
+  width: 100%;
+  min-height: 70px;
+  max-height: 150px;
+  resize: vertical;
+  padding: 8px;
+  border: 1px solid var(--lft-border);
+  border-radius: 3px;
+  color: var(--lft-text);
+  background: var(--lft-surface);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  user-select: text;
+}
+
+.lft-annotation-draft-input:focus-visible {
+  outline: 2px solid var(--lft-accent);
+  outline-offset: 1px;
+}
+
+.lft-annotation-draft-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 6px;
+}
+
 .lft-model-picker {
   display: inline-flex;
   min-height: 30px;

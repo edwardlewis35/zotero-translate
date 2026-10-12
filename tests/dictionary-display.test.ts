@@ -177,12 +177,14 @@ assert.equal(
   "sample",
 );
 assert.deepEqual(
-  first.querySelectorAll("details").map((group) => group.open),
+  first.querySelectorAll(".lft-dictionary-section").map((group) => group.open),
   [true, true, true],
   "meanings, tags and forms start expanded",
 );
 assert.deepEqual(
-  first.querySelectorAll("summary").map((summary) => summary.textContent),
+  first
+    .querySelectorAll(".lft-dictionary-section")
+    .map((section) => section.querySelector("summary")!.textContent),
   ["双语释义", "词条标签", "词形变化"],
 );
 assert.equal(first.querySelector(".lft-audio"), null);
@@ -440,7 +442,7 @@ assert.ok(
   longPanel.querySelectorAll(".lft-sense").every((sense) => !sense.hidden),
 );
 assert.equal(longPanel.querySelectorAll(".lft-pos-heading")[1]!.hidden, false);
-const formsSection = longPanel.querySelectorAll("details")[2]!;
+const formsSection = longPanel.querySelectorAll(".lft-dictionary-section")[2]!;
 formsSection.open = false;
 formsSection.dispatchEvent(new Event("toggle"));
 finish({
@@ -455,12 +457,16 @@ assert.deepEqual(
 );
 longPanel = finalPanels[1]!;
 assert.deepEqual(
-  longPanel.querySelectorAll("details").map((group) => group.open),
+  longPanel
+    .querySelectorAll(".lft-dictionary-section")
+    .map((group) => group.open),
   [true, true, false],
   "only the section closed by the user stays collapsed when more dictionaries finish",
 );
 assert.ok(
-  finalPanels[2]!.querySelectorAll("details").every((group) => group.open),
+  finalPanels[2]!
+    .querySelectorAll(".lft-dictionary-section")
+    .every((group) => group.open),
 );
 assert.ok(
   longPanel.querySelectorAll(".lft-sense").every((sense) => !sense.hidden),
@@ -490,7 +496,7 @@ const earlyToggle = mount(async (_word, options) => {
 const earlyQuery = earlyToggle.instance.lookupLocal();
 const detachedSection = earlyToggle.root
   .querySelectorAll(".lft-dictionary")[0]!
-  .querySelector("details")!;
+  .querySelector(".lft-dictionary-section")!;
 detachedSection.open = false; // No toggle event yet.
 finishEarlyToggle({
   ...partial,
@@ -499,7 +505,7 @@ finishEarlyToggle({
 await earlyQuery;
 const preservedSection = earlyToggle.root
   .querySelectorAll(".lft-dictionary")[0]!
-  .querySelector("details")!;
+  .querySelector(".lft-dictionary-section")!;
 assert.equal(preservedSection.open, false);
 detachedSection.open = true;
 detachedSection.dispatchEvent(new Event("toggle"));
@@ -511,7 +517,7 @@ assert.equal(
 assert.equal(
   earlyToggle.root
     .querySelectorAll(".lft-dictionary")[2]!
-    .querySelector("details")!.open,
+    .querySelector(".lft-dictionary-section")!.open,
   true,
 );
 

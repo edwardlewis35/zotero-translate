@@ -126,6 +126,12 @@ function toolbar(root: TestElement) {
   return actions.children[1]!;
 }
 
+function translationContent(root: TestElement) {
+  const content = root.querySelector(".lft-translation-lines");
+  assert.ok(content, "completed online results contain the translation body");
+  return content;
+}
+
 // Header controls remain stable in idle/loading/success and only a completed
 // dictionary/API result enables annotation saving. The body keeps its headword.
 const visible = mount(async () => local);
@@ -215,14 +221,16 @@ assert.equal(
   "sample",
 );
 assert.deepEqual(
-  explanation.root
+  translationContent(explanation.root)
     .querySelectorAll("summary")
     .map((summary) => summary.textContent),
   ["词性与释义", "例句"],
   "remove an exact leading duplicate headword while keeping provider section titles",
 );
 assert.ok(
-  explanation.root.querySelectorAll("details").every((section) => section.open),
+  translationContent(explanation.root)
+    .querySelectorAll(".lft-dictionary-section")
+    .every((section) => section.open),
 );
 assert.equal(explanation.root.querySelectorAll("ol").length, 1);
 assert.equal(explanation.root.querySelectorAll("ul").length, 1);
@@ -323,9 +331,12 @@ for (const heading of [
   });
   const retained = mount(async () => local);
   await retained.card.translateOnline();
-  assert.equal(retained.root.querySelectorAll("summary").length, 1);
+  assert.equal(
+    translationContent(retained.root).querySelectorAll("summary").length,
+    1,
+  );
   assert.ok(
-    retained.root
+    translationContent(retained.root)
       .querySelector("summary")!
       .textContent.includes(heading.replaceAll("**", "")),
   );
@@ -342,7 +353,7 @@ handleRequest = async () => ({
 const duplicate = mount(async () => local);
 await duplicate.card.translateOnline();
 assert.deepEqual(
-  duplicate.root
+  translationContent(duplicate.root)
     .querySelectorAll("summary")
     .map((summary) => summary.textContent),
   ["词典释义", "sample"],
@@ -372,7 +383,7 @@ assert.equal(
   "译文",
 );
 assert.deepEqual(
-  paragraph.root
+  translationContent(paragraph.root)
     .querySelectorAll("summary")
     .map((summary) => summary.textContent),
   ["A complete sentence.", "<script>alert(1)</script>"],
@@ -418,7 +429,10 @@ completedRequest.resolve(completedStream);
 await completing;
 assert.equal(toolbar(completed.root).disabled, false);
 assert.equal(completed.root.querySelectorAll("h3").length, 1);
-assert.equal(completed.root.querySelector("summary")!.textContent, "词典释义");
+assert.equal(
+  translationContent(completed.root).querySelector("summary")!.textContent,
+  "词典释义",
+);
 assert.equal(
   completed.root.querySelectorAll(".lft-dictionary-headword").length,
   1,
