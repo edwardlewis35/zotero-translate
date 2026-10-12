@@ -975,7 +975,7 @@ export class TranslationCard {
         "div",
         "lft-state-detail",
         result.errors[0] ||
-          `已查询 ${result.configuredDictionaries} 部词典。可以把时态、复数或派生词修改为原形后重新查询。`,
+          `已查询 ${result.configuredDictionaries} 部词典。配置好模型和接口地址后，未命中的单词会自动使用 AI 释义；也可以编辑原形重新查询。`,
       ),
     );
     const editor = this.element("div", "lft-word-editor");
@@ -1047,7 +1047,7 @@ export class TranslationCard {
         ),
         this.button("重新翻译", () => void this.translateOnline()),
         ...(this.isWord
-          ? [this.button("本地词典", () => void this.lookupLocal())]
+          ? [this.button("本地词典", () => void this.lookupLocal(false))]
           : []),
       ],
       false,
@@ -1149,6 +1149,7 @@ export class TranslationCard {
   private renderOnlineStreaming(
     profile: APIProfile,
     requestID: number,
+    automaticFallback = false,
   ): (progress: TranslationProgress) => void {
     const content = this.element("div", "lft-llm-result is-streaming");
     if (isSingleWord(this.queryText))
@@ -1156,7 +1157,11 @@ export class TranslationCard {
         this.renderEntryHeader(normalizeSelectedWord(this.queryText)),
       );
     content.append(
-      this.element("div", "lft-llm-label is-streaming", "正在接收译文"),
+      this.element(
+        "div",
+        "lft-llm-label is-streaming",
+        automaticFallback ? "本地词典未命中，正在使用 AI 释义" : "正在接收译文",
+      ),
     );
     const output = this.element(
       "div",
@@ -1243,7 +1248,7 @@ export class TranslationCard {
     );
     if (this.isWord) {
       actions.prepend(
-        this.button("返回本地词典", () => void this.lookupLocal()),
+        this.button("返回本地词典", () => void this.lookupLocal(false)),
       );
     }
     content.append(actions);
@@ -1251,7 +1256,7 @@ export class TranslationCard {
     this.frame("OpenAI-compatible API", state);
   }
 
-  async lookupLocal(): Promise<void> {
+  async lookupLocal(autoFallback = true): Promise<void> {
     if (this.disposed) return;
     const cancel = this.cancelActiveRequest;
     this.cancelActiveRequest = null;
@@ -1285,7 +1290,20 @@ export class TranslationCard {
       if (result.entries.length > 0) {
         this.renderLocalResult(result);
       } else {
-        this.renderLocalMiss(result);
+        this.setQueryText(result.word);
+        const profile = getSelectedAPIProfile(this.selectedProfileID);
+        if (
+          autoFallback &&
+          isSingleWord(this.queryText) &&
+          profile.endpoint.trim() &&
+          profile.model.trim()
+        ) {
+          // Wait for every dictionary before falling back. Keep the selected
+          // form for the model to explain, instead of guessing a word stem.
+          await this.translateOnline(true);
+        } else {
+          this.renderLocalMiss(result);
+        }
       }
     } catch (error) {
       if (requestID !== this.requestID || !this.root.isConnected) return;
@@ -1298,7 +1316,7 @@ export class TranslationCard {
     }
   }
 
-  async translateOnline(): Promise<void> {
+  async translateOnline(automaticFallback = false): Promise<void> {
     if (this.disposed) return;
     const previousCancel = this.cancelActiveRequest;
     this.cancelActiveRequest = null;
@@ -1310,7 +1328,11 @@ export class TranslationCard {
     const requestID = ++this.requestID;
     const profile = getSelectedAPIProfile(this.selectedProfileID);
     this.selectedProfileID = profile.id;
-    const updateStreaming = this.renderOnlineStreaming(profile, requestID);
+    const updateStreaming = this.renderOnlineStreaming(
+      profile,
+      requestID,
+      automaticFallback,
+    );
     try {
       const result = await translateWithOpenAI(
         this.isWord ? this.queryText : this.text,
