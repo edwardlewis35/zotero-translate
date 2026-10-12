@@ -17,11 +17,6 @@ import {
 const STYLE_ID = "lexiflowdicttranslator-reader-style";
 let nextCardID = 0;
 
-function compactSelection(text: string): string {
-  const normalized = text.replace(/\s+/gu, " ").trim();
-  return normalized.length > 72 ? `${normalized.slice(0, 69)}…` : normalized;
-}
-
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -59,6 +54,7 @@ export class TranslationCard {
   private queryText: string;
   private selectedProfileID = getPref("selectedApiProfileId");
   private cancelActiveRequest: (() => void) | null = null;
+  private disposed = false;
   private readonly cardID = ++nextCardID;
   private selectedDictionaryIndex = 0;
   private readonly expandedDictionarySources = new Set<string>();
@@ -70,6 +66,7 @@ export class TranslationCard {
     private readonly dictionaries: LocalDictionaryService,
     private readonly openSettings: () => void,
     private readonly saveAnnotation?: (translation: string) => Promise<void>,
+    private readonly onClose?: () => void,
   ) {
     this.queryText = text;
     ensureReaderStyles(doc);
@@ -81,6 +78,7 @@ export class TranslationCard {
   }
 
   start(): void {
+    if (this.disposed) return;
     if (this.isWord) {
       if (getPref("autoTranslateWord")) {
         void this.lookupLocal();
@@ -103,6 +101,25 @@ export class TranslationCard {
         "点击按钮后使用已配置的 OpenAI-compatible 接口翻译。",
         false,
       );
+    }
+  }
+
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    ++this.requestID;
+    const cancel = this.cancelActiveRequest;
+    this.cancelActiveRequest = null;
+    try {
+      cancel?.();
+    } catch {
+      // A completed request may already have released its cancellation handle.
+    }
+    for (const node of this.root.querySelectorAll("audio")) {
+      const audio = node as HTMLAudioElement | null;
+      if (!audio) continue;
+      audio.pause?.();
+      audio.remove();
     }
   }
 
@@ -147,24 +164,24 @@ export class TranslationCard {
     body: HTMLElement,
     actions: HTMLElement[] = [],
     modelPickerDisabled = false,
+    annotationText?: string,
   ): void {
+    if (this.disposed) return;
     const header = this.element("div", "lft-card-header");
-    const titleWrap = this.element("div", "lft-card-title-wrap");
-    titleWrap.append(this.element("div", "lft-card-mark", "L"));
-    const heading = this.element("div", "lft-card-heading");
-    heading.append(
-      this.element(
-        "div",
-        "lft-card-title",
-        compactSelection(this.isWord ? this.queryText : this.text),
-      ),
-      this.element("div", "lft-card-subtitle", subtitle),
-    );
-    titleWrap.append(heading);
-    header.append(titleWrap);
+    header.setAttribute("aria-label", subtitle);
     const actionWrap = this.element("div", "lft-card-actions");
-    actionWrap.append(this.modelPicker(modelPickerDisabled), ...actions);
+    actionWrap.append(
+      this.modelPicker(modelPickerDisabled),
+      this.annotationButton(annotationText),
+      ...actions,
+    );
     header.append(actionWrap);
+    if (this.onClose) {
+      const close = this.button("×", this.onClose, false, "关闭翻译浮窗");
+      close.classList.add("lft-close-button");
+      close.setAttribute("aria-label", "关闭翻译浮窗");
+      header.append(close);
+    }
     const bodyWrap = this.element("div", "lft-card-body");
     bodyWrap.append(body);
     this.root.replaceChildren(header, bodyWrap);
@@ -564,19 +581,27 @@ export class TranslationCard {
     status.textContent = message;
   }
 
-  private annotationButton(translation: string): HTMLButtonElement | null {
+  private annotationButton(translation?: string): HTMLButtonElement {
     const saveAnnotation = this.saveAnnotation;
-    if (!saveAnnotation) return null;
+    const requestID = this.requestID;
     let button: HTMLButtonElement;
     button = this.button(
       "写入批注",
       () => {
+        if (!saveAnnotation || !translation?.trim() || this.disposed) return;
         this.root.querySelector(".lft-annotation-status")?.remove();
         button.disabled = true;
         button.textContent = "正在写入…";
         void saveAnnotation(translation)
           .then(() => {
-            button.textContent = "✓ 已创建下划线批注";
+            if (
+              this.disposed ||
+              requestID !== this.requestID ||
+              !button.isConnected
+            )
+              return;
+            button.textContent = "✓ 已写入";
+            button.title = "已创建下划线批注";
             button.classList.add("lft-button-success");
             this.showAnnotationStatus(
               "翻译内容已保存到 Zotero 下划线批注。",
@@ -588,6 +613,12 @@ export class TranslationCard {
             Zotero.logError(
               error instanceof Error ? error : new Error(message),
             );
+            if (
+              this.disposed ||
+              requestID !== this.requestID ||
+              !button.isConnected
+            )
+              return;
             button.disabled = false;
             button.textContent = "重试写入";
             button.title = `写入批注失败：${message}`;
@@ -598,6 +629,11 @@ export class TranslationCard {
       "对当前选中文本创建下划线，并把本次翻译写入批注内容",
     );
     button.classList.add("lft-button-annotation");
+    button.disabled = !saveAnnotation || !translation?.trim();
+    if (button.disabled)
+      button.title = saveAnnotation
+        ? "获得完整查询结果后可以写入批注"
+        : "当前选区不支持写入批注";
     return button;
   }
 
@@ -672,17 +708,15 @@ export class TranslationCard {
         ),
       );
     }
-    const annotationButton = loading
-      ? null
-      : this.annotationButton(this.localAnnotationText(result));
     this.frame(
       `本地词典 · 命中 ${result.entries.length}/${result.configuredDictionaries}`,
       content,
       [
-        ...(annotationButton ? [annotationButton] : []),
         this.button("重新查询", () => void this.lookupLocal()),
         this.button("大模型翻译", () => void this.translateOnline()),
       ],
+      false,
+      loading ? undefined : this.localAnnotationText(result),
     );
   }
 
@@ -753,28 +787,81 @@ export class TranslationCard {
         status === "完成" ? "✦ 大模型译文" : `✦ 大模型译文 · ${status}`,
       ),
     );
-    const lines = this.element("div", "lft-translation-lines");
-    for (const line of translationLines(text)) {
-      lines.append(this.element("p", "lft-translation-line", line));
-    }
-    content.append(lines);
+    content.append(this.renderTranslationText(text));
     const footer = this.element("div", "lft-footer");
     footer.append(
       this.element("span", "", `${profileName} · ${model}`),
       this.element("span", "", `${text.length} 字符`),
     );
     content.append(footer);
-    const annotationButton = this.annotationButton(text);
-    this.frame("大模型翻译 · 分行显示", content, [
-      ...(annotationButton ? [annotationButton] : []),
-      this.button("复制", () =>
-        Zotero.Utilities.Internal.copyTextToClipboard(text),
-      ),
-      this.button("重新翻译", () => void this.translateOnline()),
-      ...(this.isWord
-        ? [this.button("本地词典", () => void this.lookupLocal())]
-        : []),
-    ]);
+    this.frame(
+      "大模型翻译 · 分行显示",
+      content,
+      [
+        this.button("复制", () =>
+          Zotero.Utilities.Internal.copyTextToClipboard(text),
+        ),
+        this.button("重新翻译", () => void this.translateOnline()),
+        ...(this.isWord
+          ? [this.button("本地词典", () => void this.lookupLocal())]
+          : []),
+      ],
+      false,
+      status === "完成" ? text : undefined,
+    );
+  }
+
+  private appendInlineText(parent: HTMLElement, text: string): void {
+    // A small inert Markdown subset improves dictionary explanations without
+    // letting provider output create links, HTML, images or executable content.
+    const pattern =
+      /\*\*([^*\n]+)\*\*|__([^_\n]+)__|`([^`\n]+)`|\*([^*\n]+)\*/gu;
+    let offset = 0;
+    for (const match of text.matchAll(pattern)) {
+      if (match.index > offset)
+        parent.append(
+          this.element("span", "", text.slice(offset, match.index)),
+        );
+      const tag = match[3] ? "code" : match[4] ? "em" : "strong";
+      parent.append(
+        this.element(tag, "", match[1] || match[2] || match[3] || match[4]),
+      );
+      offset = match.index + match[0].length;
+    }
+    if (offset < text.length)
+      parent.append(this.element("span", "", text.slice(offset)));
+  }
+
+  private renderTranslationText(text: string): HTMLElement {
+    const lines = this.element("div", "lft-translation-lines");
+    let list: HTMLUListElement | HTMLOListElement | undefined;
+    let listKind = "";
+    for (const line of translationLines(text)) {
+      const heading = line.match(/^#{1,6}\s+(.+?)\s*#*$/u);
+      const ordered = line.match(/^([0-9]{1,3})[.)]\s+(.+)$/u);
+      const unordered = line.match(/^[-*+]\s+(.+)$/u);
+      if (ordered || unordered) {
+        const kind = ordered ? "ol" : "ul";
+        if (!list || listKind !== kind) {
+          list = this.element(kind, "lft-translation-list");
+          if (ordered) (list as HTMLOListElement).start = Number(ordered[1]);
+          lines.append(list);
+          listKind = kind;
+        }
+        const item = this.element("li", "lft-translation-item");
+        this.appendInlineText(item, ordered?.[2] || unordered![1]!);
+        list.append(item);
+      } else {
+        list = undefined;
+        listKind = "";
+        const paragraph = heading
+          ? this.element("h3", "lft-translation-heading")
+          : this.element("p", "lft-translation-line");
+        this.appendInlineText(paragraph, heading?.[1] || line);
+        lines.append(paragraph);
+      }
+    }
+    return lines;
   }
 
   private renderOnlineStreaming(
@@ -841,10 +928,15 @@ export class TranslationCard {
         output.textContent = progress.text;
         count.textContent = `${progress.text.length} 字符 · 接收中`;
         modelLabel.textContent = `${progress.profileName} · ${progress.model}`;
+        const scrollArea =
+          this.root.querySelector<HTMLElement>(".lft-card-body");
+        if (!scrollArea) return;
         const distanceFromBottom =
-          this.root.scrollHeight - this.root.scrollTop - this.root.clientHeight;
+          scrollArea.scrollHeight -
+          scrollArea.scrollTop -
+          scrollArea.clientHeight;
         if (distanceFromBottom < 90)
-          this.root.scrollTop = this.root.scrollHeight;
+          scrollArea.scrollTop = scrollArea.scrollHeight;
       }
     };
   }
@@ -873,6 +965,7 @@ export class TranslationCard {
   }
 
   async lookupLocal(): Promise<void> {
+    if (this.disposed) return;
     const cancel = this.cancelActiveRequest;
     this.cancelActiveRequest = null;
     try {
@@ -919,6 +1012,7 @@ export class TranslationCard {
   }
 
   async translateOnline(): Promise<void> {
+    if (this.disposed) return;
     const previousCancel = this.cancelActiveRequest;
     this.cancelActiveRequest = null;
     try {
@@ -937,7 +1031,9 @@ export class TranslationCard {
           profile,
           onProgress: updateStreaming,
           registerCancel: (cancel) => {
-            if (requestID === this.requestID) this.cancelActiveRequest = cancel;
+            if (!this.disposed && requestID === this.requestID)
+              this.cancelActiveRequest = cancel;
+            else cancel();
           },
         },
       );

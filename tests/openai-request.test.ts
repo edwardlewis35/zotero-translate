@@ -112,9 +112,18 @@ assert.equal(requestURL, "https://example.com/compatible-mode/v1/responses");
 assert.equal(requestBody.stream, true);
 assert.equal(requestBody.store, false);
 assert.equal(requestBody.messages, undefined);
-assert.deepEqual(requestBody.input, [
-  { role: "user", content: "翻译为 简体中文：hello" },
-]);
+const wordInput = requestBody.input as {
+  role: "system" | "user";
+  content: string;
+}[];
+assert.equal(wordInput.length, 2);
+assert.equal(wordInput[0].role, "system");
+assert.match(wordInput[0].content, /完整.*词典条目/u);
+assert.match(wordInput[0].content, /每个主要义项至少.*例句/u);
+assert.deepEqual(wordInput[1], {
+  role: "user",
+  content: "翻译为 简体中文：hello",
+});
 assert.equal(requestBody.temperature, 0.2);
 assert.equal(requestHeaders.Authorization, "Bearer secret");
 assert.match(requestHeaders.Accept, /text\/event-stream/u);
@@ -147,12 +156,35 @@ assert.equal(
 assert.equal(requestBody.temperature, 2);
 assert.equal(requestBody.input, undefined);
 assert.equal(requestBody.store, undefined);
-assert.deepEqual(requestBody.messages, [
-  { role: "user", content: "翻译为 简体中文：hello" },
-]);
+assert.deepEqual(requestBody.messages, wordInput);
 assert.equal(requestHeaders.Authorization, undefined);
 assert.equal(chatResult.text, "聊天兼容");
 assert.equal(chatResult.model, "chat-model");
+
+// The actual payload switches mode after a lookup edit, for either API protocol.
+scenario = { chunks: [], object: completed("测试译文").response };
+await translateWithOpenAI("“went.”", { profile });
+assert.equal((requestBody.input as typeof wordInput)[0].role, "system");
+assert.equal(
+  (requestBody.input as typeof wordInput)[1].content,
+  "翻译为 简体中文：went",
+);
+for (const protocol of ["responses", "chat-completions"] as const) {
+  await translateWithOpenAI("bank account", {
+    profile: { ...profile, protocol },
+  });
+  assert.deepEqual(
+    protocol === "responses" ? requestBody.input : requestBody.messages,
+    [{ role: "user", content: "翻译为 简体中文：bank account" }],
+  );
+}
+await translateWithOpenAI("hello", {
+  profile,
+  selectionMode: "translation",
+});
+assert.deepEqual(requestBody.input, [
+  { role: "user", content: "翻译为 简体中文：hello" },
+]);
 
 // Cancellation suppresses later progress even if the transport resolves after abort.
 scenario = {

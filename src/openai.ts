@@ -1,5 +1,6 @@
 import { resolveAPIEndpoint } from "./api-endpoint";
 import { getSelectedAPIProfile, type APIProfile } from "./prefs";
+import { buildTranslationMessages, type SelectionMode } from "./prompts";
 import {
   looksLikeHTML,
   OpenAIStreamDecoder,
@@ -22,24 +23,9 @@ export interface TranslationProgress extends OpenAITranslation {
 
 export interface TranslateOptions {
   profile?: APIProfile;
+  selectionMode?: SelectionMode;
   onProgress?: (progress: TranslationProgress) => void;
   registerCancel?: (cancel: () => void) => void;
-}
-
-function renderPrompt(
-  template: string,
-  sourceText: string,
-  targetLanguage: string,
-): string {
-  const hasSourcePlaceholder = template.includes("${sourceText}");
-  const rendered = template
-    .split("${sourceText}")
-    .join(sourceText)
-    .split("${targetLanguage}")
-    .join(targetLanguage);
-  return hasSourcePlaceholder
-    ? rendered
-    : `${rendered.trim()}\n\n待翻译内容：\n${sourceText}`;
 }
 
 function readableRequestError(error: unknown): Error {
@@ -93,12 +79,12 @@ export async function translateWithOpenAI(
   };
   if (profile.apiKey.trim())
     headers.Authorization = `Bearer ${profile.apiKey.trim()}`;
-  const input = [
-    {
-      role: "user",
-      content: renderPrompt(profile.prompt, sourceText, profile.targetLanguage),
-    },
-  ];
+  const input = buildTranslationMessages(
+    sourceText,
+    profile.prompt,
+    profile.targetLanguage,
+    options.selectionMode,
+  );
   const body = {
     model,
     ...(protocol === "responses"

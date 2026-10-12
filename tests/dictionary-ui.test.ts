@@ -117,7 +117,7 @@ const incremental = card(async (_word, options) => {
 const querying = incremental.instance.lookupLocal();
 assert.ok(incremental.root.textContent.includes("Alpha"));
 assert.ok(incremental.root.textContent.includes("正在打开 Beta"));
-assert.equal(button(incremental.root, "写入批注"), undefined);
+assert.equal(button(incremental.root, "写入批注")!.disabled, true);
 const complete = {
   ...partial,
   entries: [...partial.entries, ...result("Beta").entries],
