@@ -109,7 +109,14 @@ function mount(
 
 const result: LocalLookupResult = {
   word: "sample",
-  entries: [entry("示例甲词典", [structured]), entry("示例乙词典", [fallback])],
+  entries: [
+    entry("示例甲词典", [structured]),
+    {
+      ...entry("示例乙词典", [fallback]),
+      headword: "sample-alt",
+      pronunciations: [{ region: "美", text: "/ˈsæmpəl ɔːlt/" }],
+    },
+  ],
   errors: [],
   configuredDictionaries: 2,
 };
@@ -117,6 +124,19 @@ const display = mount(async () => result);
 await display.instance.lookupLocal();
 const panels = display.root.querySelectorAll(".lft-dictionary");
 const tabs = display.root.querySelectorAll(".lft-dictionary-tab");
+const sharedHeader = display.root.querySelector(".lft-entry-header")!;
+const localContent = display.root.querySelector(".lft-local-result")!;
+assert.ok(
+  localContent.children.indexOf(sharedHeader) <
+    localContent.children.indexOf(
+      display.root.querySelector(".lft-dictionary-tabs")!,
+    ),
+  "the selected headword and its pronunciation precede the source tabs",
+);
+assert.equal(
+  display.root.querySelectorAll(".lft-dictionary-headword").length,
+  1,
+);
 assert.equal(panels.length, 2);
 assert.deepEqual(
   panels.map((panel) => panel.hidden),
@@ -149,7 +169,21 @@ assert.equal(
   "structured fields must not repeat the legacy lines",
 );
 assert.equal(first.querySelector(".lft-sense-number")!.textContent, "1");
-assert.equal(first.querySelectorAll(".lft-pronunciation").length, 2);
+assert.equal(first.querySelector(".lft-dictionary-header"), null);
+assert.equal(sharedHeader.querySelectorAll(".lft-pronunciation").length, 2);
+assert.equal(
+  sharedHeader.querySelector(".lft-dictionary-headword")!.textContent,
+  "sample",
+);
+assert.deepEqual(
+  first.querySelectorAll("details").map((group) => group.open),
+  [true, true, true],
+  "meanings, tags and forms start expanded",
+);
+assert.deepEqual(
+  first.querySelectorAll("summary").map((summary) => summary.textContent),
+  ["双语释义", "词条标签", "词形变化"],
+);
 assert.equal(first.querySelector(".lft-audio"), null);
 assert.equal(
   first.querySelector(".lft-usage-note-translation")!.textContent,
@@ -164,6 +198,17 @@ assert.deepEqual(
 );
 assert.equal(tabs[1]!.getAttribute("aria-selected"), "true");
 assert.equal(
+  sharedHeader.querySelector(".lft-dictionary-headword")!.textContent,
+  "sample-alt",
+);
+assert.deepEqual(
+  sharedHeader
+    .querySelectorAll(".lft-pron-text")
+    .map((pronunciation) => pronunciation.textContent),
+  ["/ˈsæmpəl ɔːlt/"],
+  "switching source must replace the headword and IPA rather than combine dictionaries",
+);
+assert.equal(
   panels[1]!.querySelector(".lft-example")!.textContent,
   "A fallback example.旧格式例句译文。",
 );
@@ -175,6 +220,16 @@ tabs[1]!.dispatchEvent(home);
 assert.deepEqual(
   panels.map((panel) => panel.hidden),
   [false, true],
+);
+assert.equal(
+  sharedHeader.querySelector(".lft-dictionary-headword")!.textContent,
+  "sample",
+);
+assert.deepEqual(
+  sharedHeader
+    .querySelectorAll(".lft-pron-text")
+    .map((pronunciation) => pronunciation.textContent),
+  ["/ˈsɑːmpəl/", "/ˈsæmpəl/"],
 );
 
 display.root
@@ -226,6 +281,9 @@ assert.ok(
   longPanel.querySelectorAll(".lft-sense").every((sense) => !sense.hidden),
 );
 assert.equal(longPanel.querySelectorAll(".lft-pos-heading")[1]!.hidden, false);
+const formsSection = longPanel.querySelectorAll("details")[2]!;
+formsSection.open = false;
+formsSection.dispatchEvent(new Event("toggle"));
 finish({
   ...partial,
   entries: [...partial.entries, entry("示例丙词典", [fallback])],
@@ -237,6 +295,14 @@ assert.deepEqual(
   [true, false, true],
 );
 longPanel = finalPanels[1]!;
+assert.deepEqual(
+  longPanel.querySelectorAll("details").map((group) => group.open),
+  [true, true, false],
+  "only the section closed by the user stays collapsed when more dictionaries finish",
+);
+assert.ok(
+  finalPanels[2]!.querySelectorAll("details").every((group) => group.open),
+);
 assert.ok(
   longPanel.querySelectorAll(".lft-sense").every((sense) => !sense.hidden),
 );
@@ -245,6 +311,49 @@ assert.equal(
   longPanel.querySelectorAll(".lft-sense").filter((sense) => !sense.hidden)
     .length,
   6,
+);
+
+// Native details toggle is queued. Snapshot the live open property before a
+// progressive redraw even if the queued toggle has not been delivered yet.
+let finishEarlyToggle!: (value: LocalLookupResult) => void;
+const earlyToggleResult = new Promise<LocalLookupResult>((resolve) => {
+  finishEarlyToggle = resolve;
+});
+const earlyToggle = mount(async (_word, options) => {
+  options?.onProgress?.({
+    result: partial,
+    completed: 2,
+    total: 3,
+    message: "仍在查词",
+  });
+  return earlyToggleResult;
+});
+const earlyQuery = earlyToggle.instance.lookupLocal();
+const detachedSection = earlyToggle.root
+  .querySelectorAll(".lft-dictionary")[0]!
+  .querySelector("details")!;
+detachedSection.open = false; // No toggle event yet.
+finishEarlyToggle({
+  ...partial,
+  entries: [...partial.entries, entry("最后一部词典", [fallback])],
+});
+await earlyQuery;
+const preservedSection = earlyToggle.root
+  .querySelectorAll(".lft-dictionary")[0]!
+  .querySelector("details")!;
+assert.equal(preservedSection.open, false);
+detachedSection.open = true;
+detachedSection.dispatchEvent(new Event("toggle"));
+assert.equal(
+  preservedSection.open,
+  false,
+  "a detached section's stale toggle cannot overwrite current state",
+);
+assert.equal(
+  earlyToggle.root
+    .querySelectorAll(".lft-dictionary")[2]!
+    .querySelector("details")!.open,
+  true,
 );
 
 // Several pronunciations may share a region. A known MDD resource key must
@@ -275,6 +384,17 @@ const preciseAudio = mount(async () => ({
   configuredDictionaries: 1,
 }));
 await preciseAudio.instance.lookupLocal();
+const singleSourceTab = preciseAudio.root.querySelectorAll(
+  ".lft-dictionary-tab",
+);
+assert.equal(
+  singleSourceTab.length,
+  1,
+  "a sole dictionary still identifies the selected source",
+);
+assert.equal(singleSourceTab[0]!.getAttribute("role"), "tab");
+assert.equal(singleSourceTab[0]!.getAttribute("aria-selected"), "true");
+assert.equal(singleSourceTab[0]!.textContent, "准确发音映射示例");
 const precisePronunciations =
   preciseAudio.root.querySelectorAll(".lft-pronunciation");
 assert.equal(precisePronunciations.length, 3);

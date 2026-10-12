@@ -58,16 +58,21 @@ function mount(
     word: string,
     options?: LocalLookupOptions,
   ) => Promise<LocalLookupResult>,
+  selection = "sample",
+  isWord = true,
 ) {
   const doc = new TestDocument();
+  const saved: string[] = [];
   let closes = 0;
   const card = new TranslationCard(
     doc as never,
-    "sample",
-    true,
+    selection,
+    isWord,
     { lookup } as never,
     () => {},
-    async () => {},
+    async (translation) => {
+      saved.push(translation);
+    },
     () => {
       closes++;
       card.dispose();
@@ -79,6 +84,7 @@ function mount(
   return {
     card,
     root,
+    saved,
     get closes() {
       return closes;
     },
@@ -195,7 +201,25 @@ handleRequest = async () => ({
 const explanation = mount(async () => local);
 await explanation.card.translateOnline();
 assert.equal(toolbar(explanation.root).disabled, false);
-assert.equal(explanation.root.querySelectorAll("h3").length, 3);
+assert.equal(explanation.root.querySelectorAll("h3").length, 2);
+assert.equal(
+  explanation.root.querySelectorAll(".lft-dictionary-headword").length,
+  1,
+);
+assert.equal(
+  explanation.root.querySelector(".lft-dictionary-headword")!.textContent,
+  "sample",
+);
+assert.deepEqual(
+  explanation.root
+    .querySelectorAll("summary")
+    .map((summary) => summary.textContent),
+  ["词性与释义", "例句"],
+  "remove an exact leading duplicate headword while keeping provider section titles",
+);
+assert.ok(
+  explanation.root.querySelectorAll("details").every((section) => section.open),
+);
 assert.equal(explanation.root.querySelectorAll("ol").length, 1);
 assert.equal(explanation.root.querySelectorAll("ul").length, 1);
 assert.equal(explanation.root.querySelectorAll("strong").length, 2);
@@ -205,6 +229,80 @@ assert.equal(explanation.root.querySelector("img"), null);
 assert.ok(
   explanation.root.textContent.includes("<img src=x onerror=alert(1)>"),
 );
+
+// Deduplication is deliberately narrow: inflections, phonetics, longer
+// headings and later repeated headings are provider content, not duplicates.
+for (const heading of [
+  "samples",
+  "sample /ˈsæmpəl/",
+  "sample usage",
+  "**sample**",
+]) {
+  handleRequest = async () => ({
+    status: 200,
+    responseText: JSON.stringify({
+      status: "completed",
+      output_text: `## ${heading}\nMeaning text.`,
+    }),
+  });
+  const retained = mount(async () => local);
+  await retained.card.translateOnline();
+  assert.equal(retained.root.querySelectorAll("summary").length, 1);
+  assert.ok(
+    retained.root
+      .querySelector("summary")!
+      .textContent.includes(heading.replaceAll("**", "")),
+  );
+  assert.ok(retained.root.textContent.includes("Meaning text."));
+}
+handleRequest = async () => ({
+  status: 200,
+  responseText: JSON.stringify({
+    status: "completed",
+    output_text:
+      "## SAMPLE\nA preserved meaning.\n## sample\nA later heading stays.",
+  }),
+});
+const duplicate = mount(async () => local);
+await duplicate.card.translateOnline();
+assert.deepEqual(
+  duplicate.root
+    .querySelectorAll("summary")
+    .map((summary) => summary.textContent),
+  ["词典释义", "sample"],
+);
+assert.ok(duplicate.root.textContent.includes("A later heading stays."));
+duplicate.root.querySelector(".lft-button-annotation")!.click();
+await new Promise((resolve) => setTimeout(resolve, 0));
+assert.equal(
+  duplicate.saved[0],
+  "## SAMPLE\nA preserved meaning.\n## sample\nA later heading stays.",
+);
+
+// Paragraph results never borrow a word header or strip their first heading.
+handleRequest = async () => ({
+  status: 200,
+  responseText: JSON.stringify({
+    status: "completed",
+    output_text:
+      "## A complete sentence.\n完整句子的译文。\n### <script>alert(1)</script>\nLiteral heading text.",
+  }),
+});
+const paragraph = mount(async () => local, "A complete sentence.", false);
+await paragraph.card.translateOnline();
+assert.equal(paragraph.root.querySelector(".lft-dictionary-headword"), null);
+assert.equal(
+  paragraph.root.querySelector(".lft-dictionary-tab")!.textContent,
+  "译文",
+);
+assert.deepEqual(
+  paragraph.root
+    .querySelectorAll("summary")
+    .map((summary) => summary.textContent),
+  ["A complete sentence.", "<script>alert(1)</script>"],
+);
+assert.equal(paragraph.root.querySelector("script"), null);
+assert.ok(paragraph.root.textContent.includes("完整句子的译文。"));
 
 // Live text stays inert while arriving, then a successful completion switches
 // to the semantic Markdown display and enables saving the complete result.
@@ -232,10 +330,52 @@ completedRequest.resolve(completedStream);
 await completing;
 assert.equal(toolbar(completed.root).disabled, false);
 assert.equal(completed.root.querySelectorAll("h3").length, 1);
+assert.equal(completed.root.querySelector("summary")!.textContent, "词典释义");
+assert.equal(
+  completed.root.querySelectorAll(".lft-dictionary-headword").length,
+  1,
+);
 assert.equal(completed.root.querySelectorAll("strong").length, 1);
 assert.equal(completed.root.querySelectorAll("li").length, 3);
 assert.equal(completed.root.querySelector(".lft-translation-stream"), null);
 assert.equal(completed.root.querySelector("img"), null);
+
+// Switching a pending online explanation back to a local source invalidates
+// its progress/completion so it cannot replace the newly selected IPA/body.
+const supersededRequest = deferred<Response>();
+let supersededStream!: Response & { onprogress?: () => void };
+let supersededCancellations = 0;
+handleRequest = async (options) => {
+  options.cancellerReceiver(() => supersededCancellations++);
+  supersededStream = { status: 200, responseText: "" };
+  options.requestObserver(supersededStream);
+  return supersededRequest.promise;
+};
+const switched = mount(async () => local);
+const supersededOnline = switched.card.translateOnline();
+await switched.card.lookupLocal();
+const selectedLocalText = switched.root.textContent;
+supersededStream.responseText =
+  'data: {"type":"response.output_text.delta","delta":"## late replacement"}\n\n';
+supersededStream.onprogress?.();
+supersededRequest.resolve({
+  status: 200,
+  responseText: JSON.stringify({
+    status: "completed",
+    output_text: "## late replacement",
+  }),
+});
+await supersededOnline;
+assert.equal(supersededCancellations, 1);
+assert.equal(switched.root.textContent, selectedLocalText);
+assert.equal(
+  switched.root.querySelector(".lft-dictionary-tab")!.textContent,
+  "Invented dictionary",
+);
+assert.equal(
+  switched.root.querySelectorAll(".lft-dictionary-headword").length,
+  1,
+);
 
 // Closing with an already registered canceller invalidates both late progress
 // and late successful completion even when the upstream fails to abort.

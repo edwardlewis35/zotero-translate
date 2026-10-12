@@ -14,6 +14,8 @@ import {
   type APIProfile,
 } from "../prefs";
 
+import { isSingleWord, normalizeSelectedWord } from "../selection";
+
 const STYLE_ID = "lexiflowdicttranslator-reader-style";
 let nextCardID = 0;
 
@@ -58,6 +60,7 @@ export class TranslationCard {
   private readonly cardID = ++nextCardID;
   private selectedDictionaryIndex = 0;
   private readonly expandedDictionarySources = new Set<string>();
+  private readonly collapsedDictionarySections = new Set<string>();
 
   constructor(
     private readonly doc: Document,
@@ -352,20 +355,48 @@ export class TranslationCard {
     return list;
   }
 
-  private renderDictionary(entry: DictionaryEntry): HTMLElement {
-    const section = this.element("section", "lft-dictionary");
+  private renderEntryHeader(
+    headword: string,
+    entry?: DictionaryEntry,
+  ): HTMLElement {
     const header = this.element("div", "lft-dictionary-header");
     const identity = this.element("div", "lft-dictionary-identity");
-    identity.append(
-      this.element("div", "lft-dictionary-headword", entry.headword),
-      this.renderPronunciations(entry),
-    );
-    header.append(
-      identity,
-      this.element("div", "lft-dictionary-name", entry.source),
-    );
-    section.append(header);
+    identity.append(this.element("div", "lft-dictionary-headword", headword));
+    if (entry) identity.append(this.renderPronunciations(entry));
+    header.append(identity);
+    return header;
+  }
 
+  private dictionarySection(
+    title: string,
+    key?: string,
+  ): {
+    section: HTMLDetailsElement;
+    body: HTMLDivElement;
+  } {
+    const section = this.element("details", "lft-dictionary-section");
+    section.open = !key || !this.collapsedDictionarySections.has(key);
+    const summary = this.element("summary", "lft-section-title");
+    summary.append(this.element("h3", "lft-translation-heading", title));
+    const body = this.element("div", "lft-section-body");
+    section.append(summary, body);
+    if (key) {
+      section.dataset.sectionKey = key;
+      section.addEventListener("toggle", () => {
+        if (!section.isConnected) return;
+        if (section.open) this.collapsedDictionarySections.delete(key);
+        else this.collapsedDictionarySections.add(key);
+      });
+    }
+    return { section, body };
+  }
+
+  private renderDictionary(entry: DictionaryEntry): HTMLElement {
+    const section = this.element("section", "lft-dictionary");
+    const definitions = this.dictionarySection(
+      "双语释义",
+      `${entry.source}:senses`,
+    );
     const senses = this.element("div", "lft-senses");
     let previousPartOfSpeech = "";
     let previousHeading = "";
@@ -498,7 +529,7 @@ export class TranslationCard {
       row.append(meta, body);
       senses.append(row);
     });
-    section.append(senses);
+    definitions.body.append(senses);
     if (entry.senses.length > initialSenseCount) {
       const remaining = entry.senses.length - initialSenseCount;
       const controls = this.element("div", "lft-sense-expand");
@@ -519,17 +550,22 @@ export class TranslationCard {
       toggle.className = "lft-sense-expand-button";
       toggle.setAttribute("aria-expanded", String(showAll));
       controls.append(toggle);
-      section.append(controls);
+      definitions.body.append(controls);
     }
 
+    section.append(definitions.section);
+
     if (entry.tags.length > 0) {
+      const group = this.dictionarySection("词条标签", `${entry.source}:tags`);
       const tags = this.element("div", "lft-tags");
       for (const tag of entry.tags) {
         tags.append(this.element("span", "lft-tag", tag));
       }
-      section.append(tags);
+      group.body.append(tags);
+      section.append(group.section);
     }
     if (entry.forms.length > 0) {
+      const group = this.dictionarySection("词形变化", `${entry.source}:forms`);
       const forms = this.element("div", "lft-forms");
       for (const form of entry.forms) {
         const item = this.element("span", "lft-form");
@@ -539,7 +575,8 @@ export class TranslationCard {
         );
         forms.append(item);
       }
-      section.append(forms);
+      group.body.append(forms);
+      section.append(group.section);
     }
     section.append(
       this.element("div", "lft-source", `来自 ${entry.source} 本地词典`),
@@ -638,18 +675,39 @@ export class TranslationCard {
   }
 
   private renderLocalResult(result: LocalLookupResult, loading = false): void {
+    // Native toggle events are queued. Snapshot the actual state before a
+    // progressive lookup redraw, including a fold whose event is still pending.
+    for (const node of this.root.querySelectorAll(".lft-dictionary-section")) {
+      const section = node as HTMLDetailsElement | null;
+      if (!section) continue;
+      const key = section.dataset.sectionKey;
+      if (!key) continue;
+      if (section.open) this.collapsedDictionarySections.delete(key);
+      else this.collapsedDictionarySections.add(key);
+    }
     this.queryText = result.word;
     const content = this.element("div", "lft-local-result");
     const panels = result.entries.map((entry) => this.renderDictionary(entry));
     if (this.selectedDictionaryIndex >= panels.length)
       this.selectedDictionaryIndex = 0;
-    if (panels.length > 1) {
+    const entryHeader = this.element("div", "lft-entry-header");
+    const updateEntryHeader = (index: number) => {
+      const entry = result.entries[index];
+      if (entry)
+        entryHeader.replaceChildren(
+          this.renderEntryHeader(entry.headword, entry),
+        );
+    };
+    updateEntryHeader(this.selectedDictionaryIndex);
+    content.append(entryHeader);
+    if (panels.length > 0) {
       const tabs = this.element("div", "lft-dictionary-tabs");
       tabs.setAttribute("role", "tablist");
       tabs.setAttribute("aria-label", "词典来源");
       const buttons: HTMLButtonElement[] = [];
       const selectTab = (index: number, focus = false) => {
         this.selectedDictionaryIndex = index;
+        updateEntryHeader(index);
         panels.forEach((panel, panelIndex) => {
           panel.hidden = panelIndex !== index;
           buttons[panelIndex]!.setAttribute(
@@ -780,14 +838,21 @@ export class TranslationCard {
     status = "完成",
   ): void {
     const content = this.element("div", "lft-llm-result");
-    content.append(
-      this.element(
-        "div",
-        "lft-llm-label",
-        status === "完成" ? "✦ 大模型译文" : `✦ 大模型译文 · ${status}`,
-      ),
+    const word = isSingleWord(this.queryText);
+    if (word)
+      content.append(
+        this.renderEntryHeader(normalizeSelectedWord(this.queryText)),
+      );
+    const sourceBar = this.element("div", "lft-dictionary-tabs");
+    const label = this.element(
+      "span",
+      "lft-dictionary-tab is-active",
+      word ? "AI 释义" : "译文",
     );
-    content.append(this.renderTranslationText(text));
+    sourceBar.append(label);
+    if (status !== "完成")
+      sourceBar.append(this.element("span", "lft-llm-label", status));
+    content.append(sourceBar, this.renderTranslationText(text));
     const footer = this.element("div", "lft-footer");
     footer.append(
       this.element("span", "", `${profileName} · ${model}`),
@@ -834,10 +899,35 @@ export class TranslationCard {
 
   private renderTranslationText(text: string): HTMLElement {
     const lines = this.element("div", "lft-translation-lines");
+    let body: HTMLDivElement | undefined;
     let list: HTMLUListElement | HTMLOListElement | undefined;
     let listKind = "";
-    for (const line of translationLines(text)) {
+    const word = isSingleWord(this.queryText);
+    const headword = normalizeSelectedWord(this.queryText).toLocaleLowerCase();
+    const sourceLines = translationLines(text);
+    for (const [index, line] of sourceLines.entries()) {
       const heading = line.match(/^#{1,6}\s+(.+?)\s*#*$/u);
+      // Remove only an exact leading duplicate of the displayed headword.
+      // Other provider content, including inflections and pronunciation, stays.
+      if (index === 0 && word && heading?.[1]?.toLocaleLowerCase() === headword)
+        continue;
+      if (heading || !body) {
+        const group = this.dictionarySection(
+          heading?.[1] || (word ? "词典释义" : "译文"),
+        );
+        if (heading) {
+          const title = group.section.querySelector<HTMLElement>(
+            ".lft-translation-heading",
+          )!;
+          title.textContent = "";
+          this.appendInlineText(title, heading[1]!);
+        }
+        lines.append(group.section);
+        body = group.body;
+        list = undefined;
+        listKind = "";
+        if (heading) continue;
+      }
       const ordered = line.match(/^([0-9]{1,3})[.)]\s+(.+)$/u);
       const unordered = line.match(/^[-*+]\s+(.+)$/u);
       if (ordered || unordered) {
@@ -845,7 +935,7 @@ export class TranslationCard {
         if (!list || listKind !== kind) {
           list = this.element(kind, "lft-translation-list");
           if (ordered) (list as HTMLOListElement).start = Number(ordered[1]);
-          lines.append(list);
+          body.append(list);
           listKind = kind;
         }
         const item = this.element("li", "lft-translation-item");
@@ -854,11 +944,9 @@ export class TranslationCard {
       } else {
         list = undefined;
         listKind = "";
-        const paragraph = heading
-          ? this.element("h3", "lft-translation-heading")
-          : this.element("p", "lft-translation-line");
-        this.appendInlineText(paragraph, heading?.[1] || line);
-        lines.append(paragraph);
+        const paragraph = this.element("p", "lft-translation-line");
+        this.appendInlineText(paragraph, line);
+        body.append(paragraph);
       }
     }
     return lines;
@@ -869,8 +957,12 @@ export class TranslationCard {
     requestID: number,
   ): (progress: TranslationProgress) => void {
     const content = this.element("div", "lft-llm-result is-streaming");
+    if (isSingleWord(this.queryText))
+      content.append(
+        this.renderEntryHeader(normalizeSelectedWord(this.queryText)),
+      );
     content.append(
-      this.element("div", "lft-llm-label is-streaming", "✦ 正在流式翻译"),
+      this.element("div", "lft-llm-label is-streaming", "正在接收译文"),
     );
     const output = this.element(
       "div",
